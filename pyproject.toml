@@ -27,6 +27,7 @@ requires-python = "~=3.8"
 dependencies = [
     "click",
     "rich_click",
+    "webvtt-py",
 ]
 dynamic = ["version", "description"]
 
