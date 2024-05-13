@@ -1,0 +1,111 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "asrtk"
+authors = [{name = "ysdede", email = "ysdede@duck.com"}]
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Typing :: Typed",
+]
+requires-python = "~=3.8"
+dependencies = [
+    "click",
+    "rich_click",
+]
+dynamic = ["version", "description"]
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+]
+docs = [
+    "furo",
+    "myst-parser",
+    "sphinx",
+    "sphinx-autobuild",
+    "sphinx-copybutton",
+    "sphinxext-opengraph",
+]
+dev = [
+    "asrtk[tests,docs]",
+]
+
+[project.urls]
+Documentation = "https://asrtk.readthedocs.io/en/stable/"
+Changelog = "https://asrtk.readthedocs.io/en/stable/changelog.html"
+"Source Code" = "https://github.com/ysdede/asrtk"
+"Issue Tracker" = "https://github.com/ysdede/asrtk/issues"
+
+[project.scripts]
+asrtk = "asrtk.cli:cli"
+
+[tool.ruff]
+lint.select = ["ALL"]
+lint.ignore = [
+    "E501",  # line too long, handled by black (pycodestyle)
+    "ANN002",  # missing-type-args (flake8-annotations)
+    "ANN003",  # missing-type-kwargs (flake8-annotations)
+    "ANN101",  # missing-type-self (flake8-annotations)
+    "ANN102",  # missing-type-cls (flake8-annotations)
+    "ANN401",  # any-type (flake8-annotations)
+    "COM",  # flake8-commas, handled by black
+    "CPY",  # flake8-copyright
+    "ISC001",  # single-line-implicit-string-concatenation (flake8-implicit-str-concat)
+    "INP",  # flake8-no-pep420
+]
+src = ["src", "tests", "docs"]
+target-version = "py38"  # the minimum Python version supported, used by pyupgrade
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "F401",  # unused-import (Pyflakes)
+]
+"noxfile.py" = [
+    "D100",  # undocumented-public-module (pydocstyle)
+    "ERA001",  # commented-out-code (eradicate)
+]
+"docs/conf.py" = [
+    "A001",  # builtin-variable-shadowing (flake8-builtins)
+]
+"src/asrtk/cli.py" = [
+    "C901",  # complex-structure (mccabe)
+    "FBT001",  # boolean-type-hint-positional-argument (flake8-boolean-trap)
+    "A001",  # builtin-variable-shadowing (flake8-builtins)
+    "A002",  # builtin-argument-shadowing (flake8-builtins)
+    "PLR0913",  # too-many-arguments (Pylint)
+]
+"tests/**/test_*.py" = [
+    "D",  # pydocstyle
+    "ANN201",  # missing-return-type-undocumented-public-function (flake8-annotations)
+    "S101",   # assert (flake8-bandit)
+    "SIM300",   # yoda-conditions (flake8-simplify)
+    "PLR2004",   # magic-value-comparison (Pylint)
+]
+
+
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "asrtk",
+  "tests",
+]
+lines-between-types = 0
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
