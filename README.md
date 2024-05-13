@@ -19,6 +19,8 @@ It provides a streamlined workflow and a collection of utilities to simplify the
 - SciPy
 - librosa
 
+<!-- start docs-include-installation -->
+
 ## Getting Started
 
 To get started with ASRTK, follow these steps:
@@ -37,6 +39,28 @@ To get started with ASRTK, follow these steps:
    ```bash
    pip install -r requirements.txt
    ```
+
+<!-- end docs-include-installation -->
+
+## Usage
+
+<!-- start docs-include-usage -->
+
+Running `asrtk --help` or `python -m asrtk --help` shows a list of all of the available options and commands:
+
+<!-- [[[cog
+import cog
+from asrtk import cli
+from click.testing import CliRunner
+runner = CliRunner()
+result = runner.invoke(cli.cli, ["--help"], terminal_width=88)
+help = result.output.replace("Usage: cli", "Usage: asrtk")
+cog.outl(f"\n```sh\nasrtk --help\n{help.rstrip()}\n```\n")
+]]] -->
+<!-- [[[end]]] -->
+
+<!-- end docs-include-usage -->
+
 
 ## Contributing
 
