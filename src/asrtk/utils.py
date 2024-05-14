@@ -4,6 +4,7 @@ import json
 import hashlib
 import time
 from contextlib import contextmanager
+from bs4 import BeautifulSoup
 
 # regex used in get_unique_words
 punctuation_re = re.compile(r'[()?:;]')
@@ -114,6 +115,21 @@ def remove_text_in_brackets(text):
     pattern = r"\[.*?\]|\(.*?\)"
     return re.sub(pattern, "", text).strip()
 
+def remove_html_tags(text):
+    # clean_text = re.sub(r'<[^>]+>', '', text)
+    # return clean_text.strip()
+    soup = BeautifulSoup(text, 'html.parser')
+    return soup.get_text()
+
+def remove_mismatched_characters(text):
+    # Regex to find unclosed or unopened double quotes
+    text = re.sub(r'(^|[^"])(")([^"]*$|[^"])', r'\1\3', text)  # Remove unopened or unclosed double quotes
+
+    # Regex to find unclosed or unopened parentheses
+    text = re.sub(r'(^|[^(\)])\)([^)\]]*$|[^(\)])', r'\1\2', text)  # Remove unopened closing parentheses
+    text = re.sub(r'(^|[^)\]])\(([^(\[]*$|[^)\]])', r'\1\2', text)  # Remove unclosed opening parentheses
+
+    return text.strip()
 
 def sanitize(s):
     """
@@ -135,7 +151,10 @@ def sanitize(s):
         "..": ".",
         # "-": " ",
         " .": ".",
-        "’": "'"
+        "’": "'",
+        " ,": ", ",  # sick
+        " :": ": ",
+        " ;": "; ",
         # Note: "  " (double space) is not added here due to its special handling
     }
 
@@ -145,7 +164,8 @@ def sanitize(s):
 
     s = remove_text_in_brackets(s)
     s = add_space_after_punctuation(s)
-
+    s = remove_html_tags(s)
+    s = remove_mismatched_characters(s)
     # Special handling for multiple spaces
     while "  " in s:
         s = s.replace("  ", " ")
