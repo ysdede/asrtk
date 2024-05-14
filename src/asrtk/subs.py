@@ -42,7 +42,7 @@ def split_audio_with_subtitles(
     import time
     import webvtt
     from pydub import AudioSegment
-    from asrtk.utils import test_punc, sanitize, remove_text_in_brackets, format_time
+    from asrtk.utils import test_punc, sanitize, format_time, remove_mismatched_characters
     from asrtk.variables import blacklist
     # import numpy as np
 
@@ -153,7 +153,7 @@ def split_audio_with_subtitles(
                 i += 1
                 continue
 
-        full_text = sanitize(remove_text_in_brackets(current_caption.text))
+        full_text = sanitize(current_caption.text)
 
         start_time = current_caption.start_in_seconds * 1000  # Start time in ms
         end_time = current_caption.end_in_seconds * 1000  # End time in ms
@@ -182,7 +182,7 @@ def split_audio_with_subtitles(
             if len(potential_merge.strip()) > max_caption_length:
                 break
 
-            full_text = sanitize(remove_text_in_brackets(potential_merge))
+            full_text = sanitize(potential_merge)
             end_time = potential_end_time
             j += 1
 
@@ -241,8 +241,10 @@ def split_audio_with_subtitles(
         # Save the corresponding VTT
         vtt_chunk_name = f"{output_folder}/chunk_{i}.vtt"
         with open(vtt_chunk_name, "w") as vtt_chunk:
+            end_with_tolerance = max(0, end_with_tolerance - start_with_tolerance)
+            full_text = sanitize(full_text)
             vtt_chunk.write("WEBVTT\n\n")
-            vtt_chunk.write(f"{format_time(start_with_tolerance)} --> {format_time(end_with_tolerance)}\n")
+            vtt_chunk.write(f"{format_time(0)} --> {format_time(end_with_tolerance)}\n")
             vtt_chunk.write(full_text + "\n")
         print(f"Exported VTT: {vtt_chunk_name}")
 
