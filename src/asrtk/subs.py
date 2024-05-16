@@ -44,6 +44,7 @@ def split_audio_with_subtitles(
     from pydub import AudioSegment
     from asrtk.utils import test_punc, sanitize, format_time, remove_mismatched_characters
     from asrtk.variables import blacklist
+    from pprint import pprint
     # import numpy as np
 
     if forced_alignment:
@@ -53,8 +54,17 @@ def split_audio_with_subtitles(
         from torchaudio.transforms import Resample
         from asrtk.align import aligner
 
+    # torch.set_num_threads(1)
+
+    silero_model, silero_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True, onnx=False, trust_repo=True)
+    (get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = silero_utils
+
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
+
+    silent_chunk_folder = os.path.join(output_folder, "silent_chunks")
+    if not os.path.exists(silent_chunk_folder):
+        os.makedirs(silent_chunk_folder)
 
     # Try loading with torchaudio, if fails convert to WAV using pydub
     audio = AudioSegment.from_file(audio_file)
@@ -88,6 +98,9 @@ def split_audio_with_subtitles(
     captions = list(webvtt.read(vtt_file))
 
     i = 0
+    i_real = 0
+    avg_cps = 0
+    cps_list = []
     merged_captions = []
     # period_threshold = 1000  # Set to a huge number to disable caption merging.
     # Test for the number of periods in the first n captions
@@ -217,6 +230,23 @@ def split_audio_with_subtitles(
 
             # Extract the audio chunk with the applied tolerance
             waveform = audio_pt[:, start_sample_with_tolerance:end_sample_with_tolerance]
+
+            speech_timestamps = get_speech_timestamps(waveform, silero_model, sampling_rate=sample_rate)
+            silero_model.reset_states()
+
+            if len(speech_timestamps) == 0:
+                silent_chunk_name = f"{silent_chunk_folder}/chunk_{i}.{format}"
+                print(f"No speech detected, saving to {silent_chunk_name}...")
+                torchaudio.save(silent_chunk_name, waveform, sample_rate, format=format)
+                i += 1
+                continue
+
+            pprint(speech_timestamps)
+            global_start = speech_timestamps[0]['start']
+            global_end = speech_timestamps[-1]['end']
+            waveform = waveform[:, global_start:global_end]
+            # waveform = collect_chunks(speech_timestamps, waveform)
+
             full_text_4_alignment = full_text.replace("-", " ")
             waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
             start_sec, end_sec = aligner.get_sentence_boundaries(waveform, token_spans, num_frames, sample_rate)
@@ -229,6 +259,8 @@ def split_audio_with_subtitles(
 
             # Crop the waveform to these sample indices
             chunk = waveform[:, start_sample:end_sample]
+            num_samples = chunk.shape[1]
+            duration = num_samples / sample_rate
             start_with_tolerance = start_sec * 1000
             end_with_tolerance = end_sec * 1000
             torchaudio.save(chunk_name, chunk, sample_rate, format=format)
@@ -246,7 +278,12 @@ def split_audio_with_subtitles(
             vtt_chunk.write("WEBVTT\n\n")
             vtt_chunk.write(f"{format_time(0)} --> {format_time(end_with_tolerance)}\n")
             vtt_chunk.write(full_text + "\n")
-        print(f"Exported VTT: {vtt_chunk_name}")
+
+        i_real += 1
+        cps = len(full_text) / duration
+        cps_list.append(cps)
+        avg_cps = round(sum(cps_list) / len(cps_list), 1)
+        print(f"Exported VTT: {vtt_chunk_name}, duration: {duration}, chars: {len(full_text)}, cps: {cps:.1f}, avg_cps: {avg_cps}")
 
         # Skip over the captions that were merged
         i = j
