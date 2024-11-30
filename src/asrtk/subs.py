@@ -101,6 +101,7 @@ def split_audio_with_subtitles(
     i_real = 0
     avg_cps = 0
     cps_list = []
+    exported_filelist = []
     merged_captions = []
     # period_threshold = 1000  # Set to a huge number to disable caption merging.
     # Test for the number of periods in the first n captions
@@ -283,7 +284,24 @@ def split_audio_with_subtitles(
         cps = len(full_text) / duration
         cps_list.append(cps)
         avg_cps = round(sum(cps_list) / len(cps_list), 1)
+        exported_filelist.append([round(cps, 1), f"{vtt_chunk_name}", duration, len(full_text), avg_cps])
         print(f"Exported VTT: {vtt_chunk_name}, duration: {duration}, chars: {len(full_text)}, cps: {cps:.1f}, avg_cps: {avg_cps}")
 
         # Skip over the captions that were merged
         i = j
+
+    # sort exported_filelist by cps
+    exported_filelist.sort(key=lambda x: x[0], reverse=True)
+    import csv
+    output_file_path = f"{output_folder}/exported_filelist.csv"
+    with open(output_file_path, "w", newline="", encoding="utf-8") as csvfile:
+        fieldnames = ["cps", "vtt_chunk_name", "duration", "chars", "avg_cps"]
+        writer = csv.writer(csvfile, delimiter="\t")
+
+        # Write the header
+        writer.writerow(fieldnames)
+
+        # Write the data rows
+        writer.writerows(exported_filelist)
+
+    print(f"Exported {i_real} captions to {output_folder}")
