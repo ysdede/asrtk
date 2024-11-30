@@ -1,5 +1,11 @@
 """Main CLI for asrtk."""
 import rich_click as click
+import json
+import re
+from pathlib import Path
+import yt_dlp
+from .utils import is_valid_json_file
+from .downloader import vid_info, check_sub_lang, ydl_opts
 
 from . import __version__
 
@@ -49,7 +55,7 @@ def split(input_dir, output_dir, audio_type, pt, tolerance, forced_alignment, fo
     if not output_dir.name == inner_folder_name:
         # Append the inner folder name to the output_dir
         output_dir = output_dir / inner_folder_name
-        
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     audio_file_filter = f'*.{audio_type}'
@@ -90,3 +96,50 @@ def split(input_dir, output_dir, audio_type, pt, tolerance, forced_alignment, fo
 def repeat(input_: str, *, reverse: bool = False) -> None:
     """Repeat the input."""
     click.echo(input_ if not reverse else input_[::-1])
+
+
+@cli.command()
+@click.argument("work_dir", type=click.Path(exists=True))
+@click.argument("playlist_url", required=False, type=str, default=None)
+@click.argument("playlist_file", type=click.Path(exists=False), required=False, default=None)
+def download_playlist(work_dir: str, playlist_url: str | None, playlist_file: str | None) -> None:
+    """Download videos from a YouTube playlist with translated subtitles."""
+    if not playlist_file and not playlist_url:
+        raise click.UsageError("Either playlist_url or playlist_file must be specified.")
+
+    work_dir = Path(work_dir)
+    json_info_dir = work_dir / "json_info"
+    json_info_dir.mkdir(parents=True, exist_ok=True)
+
+    ydl_opts['paths']['home'] = str(work_dir)
+
+    playlist_urls = ([playlist_url] if playlist_url else
+                    [line.strip() for line in Path(playlist_file).read_text().splitlines()])
+
+    for url in playlist_urls:
+        playlist_id = url.split('list=')[-1].split('&')[0]
+        json_file = json_info_dir / f"{playlist_id}.json"
+
+        if json_file.exists() and is_valid_json_file(json_file):
+            click.echo(f"Loading existing playlist info from {json_file}")
+            pl_info = json.loads(json_file.read_text())
+        else:
+            pl_info = vid_info(url)
+            click.echo(f"Processing {pl_info['title']}, {pl_info['id']}, episodes: {len(pl_info['entries'])}...")
+            json_file.write_text(json.dumps(pl_info, indent=4))
+
+        click.echo(f"{pl_info['title']}, {pl_info['id']}")
+
+        playlist_dir = work_dir / re.sub(r'[^a-zA-Z0-9]', '_', pl_info["title"])
+        playlist_dir.mkdir(exist_ok=True)
+        ydl_opts['paths']['home'] = str(playlist_dir)
+
+        for entry in pl_info['entries']:
+            if check_sub_lang(info=entry):
+                click.echo(f"{entry['title']}, {'✔' if check_sub_lang(info=entry) else '❌'}")
+
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download(entry['id'])
+                except Exception as e:
+                    click.echo(f"An error occurred: {e}", err=True)
