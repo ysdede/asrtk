@@ -56,7 +56,7 @@ def split_audio_with_subtitles(
 
     # torch.set_num_threads(1)
 
-    silero_model, silero_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True, onnx=False, trust_repo=True)
+    silero_model, silero_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=False, onnx=False, trust_repo=True)
     (get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = silero_utils
 
     if not os.path.exists(output_folder):
@@ -232,7 +232,7 @@ def split_audio_with_subtitles(
             # Extract the audio chunk with the applied tolerance
             waveform = audio_pt[:, start_sample_with_tolerance:end_sample_with_tolerance]
 
-            speech_timestamps = get_speech_timestamps(waveform, silero_model, sampling_rate=sample_rate)
+            speech_timestamps = get_speech_timestamps(waveform, silero_model, threshold=0.6, sampling_rate=sample_rate)
             silero_model.reset_states()
 
             if len(speech_timestamps) == 0:
@@ -242,14 +242,34 @@ def split_audio_with_subtitles(
                 i += 1
                 continue
 
-            pprint(speech_timestamps)
+            # Trim the waveform to the VAD speech timestamps, we may disable this.
+            pprint(f"VAD Speech timestamps: {speech_timestamps}")
             global_start = speech_timestamps[0]['start']
             global_end = speech_timestamps[-1]['end']
+            backup_waveform = waveform
             waveform = waveform[:, global_start:global_end]
             # waveform = collect_chunks(speech_timestamps, waveform)
 
             full_text_4_alignment = full_text.replace("-", " ")
-            waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
+            print(f"Aligning: {full_text_4_alignment}")
+
+            try:
+                waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
+            except Exception as e:
+                print(f"Error aligning VAD trimmed waveform. Restoring backup...")
+                torchaudio.save(f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}", waveform, sample_rate, format=format)
+                # waveform = backup_waveform
+                i += 1
+                continue
+
+            # try:
+            #     waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
+            # except Exception as e:
+            #     print(f"Error aligning: {e}")
+            #     torchaudio.save(f"{output_folder}/chunk_{i}_failed_alignment.{format}", waveform, sample_rate, format=format)
+            #     i += 1
+            #     continue
+
             start_sec, end_sec = aligner.get_sentence_boundaries(waveform, token_spans, num_frames, sample_rate)
 
             print(f"Aligned: {start_sec:.3f} -> {end_sec:.3f} seconds")
