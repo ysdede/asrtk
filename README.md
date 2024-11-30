@@ -61,6 +61,50 @@ cog.outl(f"\n```sh\nasrtk --help\n{help.rstrip()}\n```\n")
 
 <!-- end docs-include-usage -->
 
+## Dataset Creation Workflow
+
+### 1. Download YouTube Content with Subtitles
+
+The first step in creating an ASR dataset is collecting source material. ASRTK provides a command to download YouTube playlists while ensuring the videos have subtitles:
+
+```bash
+asrtk download-playlist WORK_DIR [PLAYLIST_URL] [PLAYLIST_FILE]
+```
+
+This command:
+- Downloads videos from YouTube playlists that have subtitles
+- Organizes downloads into playlist-specific directories
+- Caches playlist metadata to avoid redundant downloads
+- Supports both single playlist URLs or a file containing multiple playlist URLs
+
+Options:
+- `WORK_DIR`: Directory where downloads and metadata will be stored
+- `PLAYLIST_URL`: (Optional) Direct YouTube playlist URL
+- `PLAYLIST_FILE`: (Optional) Path to a file containing playlist URLs (one per line)
+
+Example usage:
+```bash
+# Download a single playlist
+asrtk download-playlist ./my_dataset "https://www.youtube.com/playlist?list=PLAYLIST_ID"
+
+# Download multiple playlists from a file
+asrtk download-playlist ./my_dataset --playlist-file playlists.txt
+```
+
+The command will create a structured directory containing:
+```
+my_dataset/
+├── json_info/              # Cached playlist metadata
+│   └── PLAYLIST_ID.json    # Playlist information cache
+│
+└── Playlist_Name/          # One directory per playlist
+    ├── video1.m4a         # Audio files
+    ├── video1.tr.vtt      # Subtitle files
+    ├── video2.m4a
+    └── video2.tr.vtt
+```
+
+This downloaded content serves as the raw material for the next step in the pipeline, where audio tracks and subtitles are processed to create aligned training pairs for ASR systems.
 
 ## Contributing
 
