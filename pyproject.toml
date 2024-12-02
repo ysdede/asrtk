@@ -28,7 +28,8 @@ dependencies = [
     "click",
     "rich_click",
     "webvtt-py",
-    "pydub"
+    "pydub",
+    "yt-dlp"
 ]
 dynamic = ["version", "description"]
 
