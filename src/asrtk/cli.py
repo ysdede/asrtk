@@ -100,12 +100,17 @@ def repeat(input_: str, *, reverse: bool = False) -> None:
 
 @cli.command()
 @click.argument("work_dir", type=click.Path(exists=True))
-@click.argument("playlist_url", required=False, type=str, default=None)
-@click.argument("playlist_file", type=click.Path(exists=False), required=False, default=None)
+@click.option("-u", "--url", "playlist_url", type=str, help="YouTube playlist URL")
+@click.option("-f", "--file", "playlist_file", type=click.Path(exists=True), help="File containing playlist URLs")
 def download_playlist(work_dir: str, playlist_url: str | None, playlist_file: str | None) -> None:
-    """Download videos from a YouTube playlist with translated subtitles."""
+    """Download videos from a YouTube playlist with translated subtitles.
+
+    Provide either a playlist URL using --url or a file containing URLs using --file
+    """
     if not playlist_file and not playlist_url:
-        raise click.UsageError("Either playlist_url or playlist_file must be specified.")
+        raise click.UsageError("Either --url or --file must be specified.")
+    if playlist_url and playlist_file:
+        raise click.UsageError("Cannot specify both --url and --file. Choose one.")
 
     work_dir = Path(work_dir)
     json_info_dir = work_dir / "json_info"
@@ -113,10 +118,16 @@ def download_playlist(work_dir: str, playlist_url: str | None, playlist_file: st
 
     ydl_opts['paths']['home'] = str(work_dir)
 
-    playlist_urls = ([playlist_url] if playlist_url else
-                    [line.strip() for line in Path(playlist_file).read_text().splitlines()])
+    # Determine the source of playlist URLs
+    if playlist_url:
+        playlist_urls = [playlist_url]
+    else:
+        playlist_urls = [line.strip() for line in Path(playlist_file).read_text().splitlines()]
 
     for url in playlist_urls:
+        if not url:
+            continue  # Skip empty lines in the playlist file
+
         playlist_id = url.split('list=')[-1].split('&')[0]
         json_file = json_info_dir / f"{playlist_id}.json"
 
@@ -133,6 +144,7 @@ def download_playlist(work_dir: str, playlist_url: str | None, playlist_file: st
         playlist_dir = work_dir / re.sub(r'[^a-zA-Z0-9]', '_', pl_info["title"])
         playlist_dir.mkdir(exist_ok=True)
         ydl_opts['paths']['home'] = str(playlist_dir)
+        ydl_opts['download_archive'] = str(playlist_dir / 'downloaded.txt')
 
         for entry in pl_info['entries']:
             if check_sub_lang(info=entry):
