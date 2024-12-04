@@ -5,6 +5,8 @@ import hashlib
 import time
 from contextlib import contextmanager
 from bs4 import BeautifulSoup
+import shutil
+from pathlib import Path
 
 # regex used in get_unique_words
 punctuation_re = re.compile(r'[()?:;]')
@@ -368,3 +370,17 @@ def measure_time(label):
     finally:
         end_time = time.time()
         print(f"⏱'{label}' işlem süresi: {end_time - start_time:.2f} saniye.")
+
+def backup_file(file_path: str) -> str:
+    """Create a backup of a file with 'old_' prefix in filename.
+
+    Args:
+        file_path: Path to the file to backup
+
+    Returns:
+        str: Path to the backup file
+    """
+    path = Path(file_path)
+    backup_path = path.parent / f"old_{path.name}"
+    shutil.copy2(file_path, backup_path)
+    return str(backup_path)

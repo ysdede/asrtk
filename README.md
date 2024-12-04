@@ -113,3 +113,13 @@ We welcome contributions from the community! Whether it's adding new features, i
 ## License
 
 ASRTK is released under the MIT license. Contributions must adhere to this license.
+
+yt-dlp --flat-playlist --lazy-playlist --print-to-file url r:\youtube\khanAcademi.txt https://www.youtube.com/@**/playlists
+
+asrtk download-playlist r:\youtube\khanAkademiTr  --file r:\youtube\khanAcademi.txt
+
+asrtk split R:\youtube\khanAkademiTr\Depresyon__Bipolar_Bozukluk_ve_Anksiyete___Psikoloji r:\youtube\test_output -fm --tolerance 500
+
+yt-dlp --flat-playlist -J https://www.youtube.com/@esrinart > r:\youtube\esrinart.json
+
+asrtk download-playlist r:\youtube\esrinart --file r:\youtube\esrinart.json

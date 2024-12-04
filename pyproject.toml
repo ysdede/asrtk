@@ -29,7 +29,9 @@ dependencies = [
     "rich_click",
     "webvtt-py",
     "pydub",
-    "yt-dlp"
+    "yt-dlp",
+    "anthropic>=0.18.1",
+    "python-dotenv",
 ]
 dynamic = ["version", "description"]
 
