@@ -48,5 +48,5 @@
     "package_name": "asrtk",
     "short_description": "An open-source Python toolkit designed to streamline the development and enhancement of ASR systems.",
     "use_rich": "False",
-    "version": "0.1.0"
+    "version": "0.1.2"
 }

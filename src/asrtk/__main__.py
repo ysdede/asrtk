@@ -1,8 +1,6 @@
-"""asrtk as a module entry point.
+"""Command-line interface entry point."""
 
-This allows asrtk to be executable from a git checkout or zip archive.
-"""
-from .cli import cli
+from . import cli
 
 if __name__ == "__main__":
     cli()

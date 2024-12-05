@@ -4,9 +4,9 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "asrtk"
-authors = [{name = "ysdede", email = "ysdede@duck.com"}]
+authors = [{ name = "ysdede", email = "ysdede@duck.com" }]
 readme = "README.md"
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 keywords = []
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -36,9 +36,7 @@ dependencies = [
 dynamic = ["version", "description"]
 
 [project.optional-dependencies]
-tests = [
-    "pytest",
-]
+tests = ["pytest"]
 docs = [
     "furo",
     "myst-parser",
@@ -47,9 +45,7 @@ docs = [
     "sphinx-copybutton",
     "sphinxext-opengraph",
 ]
-dev = [
-    "asrtk[tests,docs]",
-]
+dev = ["asrtk[tests,docs]"]
 
 [project.urls]
 Documentation = "https://asrtk.readthedocs.io/en/stable/"
@@ -63,53 +59,49 @@ asrtk = "asrtk.cli:cli"
 [tool.ruff]
 lint.select = ["ALL"]
 lint.ignore = [
-    "E501",  # line too long, handled by black (pycodestyle)
-    "ANN002",  # missing-type-args (flake8-annotations)
-    "ANN003",  # missing-type-kwargs (flake8-annotations)
-    "ANN101",  # missing-type-self (flake8-annotations)
-    "ANN102",  # missing-type-cls (flake8-annotations)
-    "ANN401",  # any-type (flake8-annotations)
-    "COM",  # flake8-commas, handled by black
-    "CPY",  # flake8-copyright
-    "ISC001",  # single-line-implicit-string-concatenation (flake8-implicit-str-concat)
-    "INP",  # flake8-no-pep420
+    "E501",   # line too long, handled by black (pycodestyle)
+    "ANN002", # missing-type-args (flake8-annotations)
+    "ANN003", # missing-type-kwargs (flake8-annotations)
+    "ANN101", # missing-type-self (flake8-annotations)
+    "ANN102", # missing-type-cls (flake8-annotations)
+    "ANN401", # any-type (flake8-annotations)
+    "COM",    # flake8-commas, handled by black
+    "CPY",    # flake8-copyright
+    "ISC001", # single-line-implicit-string-concatenation (flake8-implicit-str-concat)
+    "INP",    # flake8-no-pep420
 ]
 src = ["src", "tests", "docs"]
-target-version = "py38"  # the minimum Python version supported, used by pyupgrade
+target-version = "py38" # the minimum Python version supported, used by pyupgrade
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
-    "F401",  # unused-import (Pyflakes)
+    "F401", # unused-import (Pyflakes)
 ]
 "noxfile.py" = [
-    "D100",  # undocumented-public-module (pydocstyle)
-    "ERA001",  # commented-out-code (eradicate)
+    "D100",   # undocumented-public-module (pydocstyle)
+    "ERA001", # commented-out-code (eradicate)
 ]
 "docs/conf.py" = [
-    "A001",  # builtin-variable-shadowing (flake8-builtins)
+    "A001", # builtin-variable-shadowing (flake8-builtins)
 ]
 "src/asrtk/cli.py" = [
-    "C901",  # complex-structure (mccabe)
+    "C901",    # complex-structure (mccabe)
     "FBT001",  # boolean-type-hint-positional-argument (flake8-boolean-trap)
-    "A001",  # builtin-variable-shadowing (flake8-builtins)
-    "A002",  # builtin-argument-shadowing (flake8-builtins)
-    "PLR0913",  # too-many-arguments (Pylint)
+    "A001",    # builtin-variable-shadowing (flake8-builtins)
+    "A002",    # builtin-argument-shadowing (flake8-builtins)
+    "PLR0913", # too-many-arguments (Pylint)
 ]
 "tests/**/test_*.py" = [
-    "D",  # pydocstyle
+    "D",       # pydocstyle
     "ANN201",  # missing-return-type-undocumented-public-function (flake8-annotations)
-    "S101",   # assert (flake8-bandit)
-    "SIM300",   # yoda-conditions (flake8-simplify)
-    "PLR2004",   # magic-value-comparison (Pylint)
+    "S101",    # assert (flake8-bandit)
+    "SIM300",  # yoda-conditions (flake8-simplify)
+    "PLR2004", # magic-value-comparison (Pylint)
 ]
-
 
 
 [tool.ruff.lint.isort]
-known-first-party = [
-  "asrtk",
-  "tests",
-]
+known-first-party = ["asrtk", "tests"]
 lines-between-types = 0
 
 [tool.ruff.lint.pydocstyle]
