@@ -393,7 +393,10 @@ def find_brackets(work_dir: str, output: str, min_frequency: int, ignore_case: b
     # Compile regex patterns
     patterns = {
         'parentheses': (r'\((.*?)\)', 'Round brackets ()'),
-        'square': (r'\[(.*?)\]', 'Square brackets []')
+        'square': (r'\[(.*?)\]', 'Square brackets []'),
+        'asterisk': (r'\*(.*?)\*', 'Asterisk enclosure **'),
+        'slash': (r'/(.*?)/', 'Forward slash enclosure //'),
+        'dash': (r'--(.+?)--', 'Double dash enclosure --')  # Using .+ to ensure at least one char between dashes
     }
     compiled_patterns = {
         name: (re.compile(pattern), desc)

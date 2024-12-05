@@ -16,14 +16,19 @@ console = Console()
 
 def print_patch_diff(old_line: str, new_line: str, word: str, replacement: str) -> None:
     """Print a diff of the patch applied to a line."""
-    # Print difference between old and new line, as print old line and highlight the difference, Do not use click's console
-    # In some cases, replacement may be "", empty string, so we need to handle that
-    old_line_parts = old_line.split(word)
+    # Split the old line into parts before and after the word
+    parts = old_line.split(word)
+    prefix = parts[0] if parts else ''
+    suffix = parts[1] if len(parts) > 1 else ''
+
     if replacement:
-        new_line_parts = new_line.split(replacement)
-        print(f"'{old_line_parts[0]}{click.style(word, fg='red')}{old_line_parts[1]}' → '{new_line_parts[0]}{click.style(replacement, fg='green')}{new_line_parts[1]}'")
-    else:# print old line in color as we do print(f"{old_line_parts[0]}{click.style(word, fg='red')}{old_line_parts[1]} → {new_line_parts[0]}{click.style(replacement, fg='green')}{new_line_parts[1]}")  then print the new line
-        print(f"'{old_line_parts[0]}{click.style(word, fg='red')}{old_line_parts[1]}' → '{new_line}'")
+        # If there's a replacement, show both old and new versions
+        print(f"'{prefix}{click.style(word, fg='red')}{suffix}' → "
+              f"'{new_line}'")
+    else:
+        # If removing text (replacement is empty), just show what's being removed
+        print(f"'{prefix}{click.style(word, fg='red')}{suffix}' → "
+              f"'{new_line}'")
 
 
 
@@ -54,31 +59,20 @@ def load_replacements(patch_file: Path) -> Dict[str, str]:
 def process_vtt_file(vtt_file: Path,
                      replacements: Dict[str, str],
                      verbose: bool = False,
-                     dry_run: bool = False) -> Tuple[int, List[Tuple[str, str, str, str]]]:
-    """Process a single VTT file with replacements.
-
-    Args:
-        vtt_file: Path to VTT file
-        replacements: Dictionary of replacements
-        verbose: Whether to collect verbose information
-        dry_run: Whether this is a dry run
-
-    Returns:
-        Tuple of (number of replacements, list of example changes)
-    """
+                     dry_run: bool = False) -> Tuple[int, List[Tuple[str, str, str, str]], str]:
+    """Process a single VTT file with replacements."""
     content = vtt_file.read_text(encoding='utf-8')
     new_content = []
     file_chars_replaced = 0
     changes = []
 
     # Sort replacements by length (longest first) to avoid partial matches
-    sorted_replacements = sorted(
-        replacements.items(), key=lambda x: len(x[0]), reverse=True)
+    sorted_replacements = sorted(replacements.items(), key=lambda x: len(x[0]), reverse=True)
 
     # Process line by line
     for line in content.split('\n'):
         # Skip VTT header, timestamps, line numbers and empty lines
-        if not line.strip() or line.strip() == 'WEBVTT' or '-->' in line or line.strip().isdigit():
+        if not line.strip() or line.startswith('WEBVTT') or '-->' in line or line.strip().isdigit():
             new_content.append(line)
             continue
 
@@ -89,13 +83,18 @@ def process_vtt_file(vtt_file: Path,
         for old_text, new_text in sorted_replacements:
             if old_text in new_line:
                 count = new_line.count(old_text)
-                new_line = new_line.replace(old_text, new_text)
-                file_chars_replaced += count
+                if old_text.startswith('WHOLELINE:'):  # New feature: replace entire line
+                    pattern = old_text[10:]  # Remove 'WHOLELINE:' prefix
+                    if pattern in new_line:
+                        new_line = new_text
+                        file_chars_replaced += len(original_line)
+                else:
+                    new_line = new_line.replace(old_text, new_text)
+                    file_chars_replaced += count
 
                 # Store example if line was changed and we haven't stored too many
-                if (verbose or dry_run) and original_line != new_line and len(changes) < 5:
-                    changes.append(
-                        (original_line, new_line, old_text, new_text))
+                if (verbose or dry_run) and original_line != new_line and len(changes) < 3:
+                    changes.append((original_line, new_line, old_text, new_text))
 
         new_content.append(new_line)
 

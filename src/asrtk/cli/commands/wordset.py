@@ -4,6 +4,7 @@ import rich_click as click
 import webvtt
 from typing import List
 import json
+from collections import Counter
 
 from ...core.text import (
     get_unique_words_with_frequencies,
@@ -12,7 +13,64 @@ from ...core.text import (
 )
 from ...core.vtt import clean_caption_text
 
+def process_vtt_file(vtt_file: Path) -> str:
+    """Process a single VTT file and return its text content."""
+    content = vtt_file.read_text(encoding='utf-8')
+    text_lines = []
+
+    for line in content.split('\n'):
+        # Skip VTT header, timestamps, line numbers and empty lines
+        if not line.strip() or line.startswith('WEBVTT') or '-->' in line or line.strip().isdigit():
+            continue
+
+        text_lines.append(line)
+
+    return ' '.join(text_lines)
+
 @click.command()
+@click.argument('input_dir', type=click.Path(exists=True))
+@click.option('--output', '-o', type=str, default="wordset.txt", help="Output text file name")
+@click.option('--min-frequency', '-f', type=int, default=1, help="Minimum word frequency to include")
+@click.option('--ignore-case', '-i', is_flag=True, help="Case insensitive counting")
+@click.option('--show-frequencies', '-s', is_flag=True, help="Show frequency counts in output")
+def create_wordset(input_dir: str, output: str, min_frequency: int, ignore_case: bool, show_frequencies: bool) -> None:
+    """Create word frequency statistics from VTT files.
+
+    Processes all VTT files in the directory recursively and creates a frequency-sorted
+    word list. Useful for creating pronunciation dictionaries or analyzing vocabulary.
+
+    Examples:
+        # Basic usage
+        asrtk create-wordset ./subtitles
+
+        # Case insensitive with minimum frequency
+        asrtk create-wordset ./subtitles -i -f 2
+
+        # Show frequencies in output
+        asrtk create-wordset ./subtitles -s
+    """
+    input_path = Path(input_dir)
+
+    # Find all VTT files recursively
+    vtt_files = list(input_path.rglob("*.vtt"))
+    if not vtt_files:
+        click.echo("No VTT files found in the input directory")
+        return
+
+    click.echo(f"Found {len(vtt_files)} VTT files")
+
+    # Process files and collect words
+    word_counts = Counter()
+    total_words = 0
+
+    with click.progressbar(vtt_files, label='Processing files') as files:
+        for vtt_file in files:
+            try:
+                # Get text content from VTT file
+                content = process_vtt_file(vtt_file)
+
+                # Split into words and count
+                words = content.split()
 @click.argument("work_dir", type=click.Path(exists=True))
 @click.option("--output", "-o", type=str, default="wordset.json", help="Output JSON file name")
 @click.option("--min-frequency", "-f", type=int, default=1, help="Minimum word frequency (default: 1)")
