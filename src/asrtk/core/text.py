@@ -67,14 +67,14 @@ def get_unique_words_with_frequencies(text: str) -> Tuple[List[str], Dict[str, i
 
     return unique_words, frequencies
 
-def find_sample_sentences(text: str, pattern: str, max_samples: int = 3, max_length: int = 100) -> List[str]:
+def find_sample_sentences(text: str, pattern: str, max_samples: int = 3, max_length: int = None) -> List[str]:
     """Find sample sentences containing the given pattern.
 
     Args:
         text: Text to search in
         pattern: Pattern to find
         max_samples: Maximum number of samples to return
-        max_length: Maximum length of each sample
+        max_length: Maximum length of each sample (if None, shows full lines)
 
     Returns:
         List of sample sentences/contexts
@@ -84,8 +84,8 @@ def find_sample_sentences(text: str, pattern: str, max_samples: int = 3, max_len
 
     for line in lines:
         if pattern in line and not line.startswith('WEBVTT') and '-->' not in line:
-            # Trim long lines
-            if len(line) > max_length:
+            # Only trim if max_length is specified
+            if max_length and len(line) > max_length:
                 # Find the pattern position
                 pos = line.find(pattern)
                 # Take some context before and after
@@ -95,7 +95,7 @@ def find_sample_sentences(text: str, pattern: str, max_samples: int = 3, max_len
                         line[start:end] + \
                         ('...' if end < len(line) else '')
             else:
-                sample = line
+                sample = line.strip()  # Use full line, just strip whitespace
 
             if sample not in samples:  # Avoid duplicates
                 samples.append(sample)
