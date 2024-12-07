@@ -13,14 +13,28 @@ console = Console()
 
 def extract_numbers(text: str, check_mixed: bool = False, check_multiple: bool = False) -> List[str]:
     """Extract numbers from text using various patterns."""
-    # Simple regex to find numbers with period as decimal separator
-    pattern = r'(?<!\d)(\d+\.\d+)(?!\d)'  # Match numbers like 17.7, 3.14 but not timestamps
+    # Pattern to match numbers that might be part of larger numbers
+    pattern = r'(?<![0-9.,])([0-9]+(?:[,.][0-9]+)+)(?![0-9])'  # Matches numbers with periods/commas
 
     found_numbers = []
     for match in re.finditer(pattern, text):
         number = match.group(1)
         # Skip if this line looks like a timestamp
         if '-->' not in text:
+            # Check if this number is part of a larger number
+            # by looking at surrounding text for connected numbers
+            start_pos = match.start(1)
+            end_pos = match.end(1)
+
+            # Look ahead for connected numbers (e.g., "1.250.000")
+            next_char_pos = end_pos
+            while next_char_pos < len(text) and text[next_char_pos:next_char_pos+1].isspace():
+                next_char_pos += 1
+
+            # If this number is part of a larger sequence, skip it
+            if next_char_pos < len(text) and text[next_char_pos:].strip().startswith('.000'):
+                continue
+
             found_numbers.append((number, 'Incorrect decimal format'))
 
     return found_numbers
