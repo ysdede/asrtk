@@ -9,6 +9,7 @@ from ...core.text import natural_sort_key
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.argument("output_dir", type=click.Path(exists=False))
 @click.option("--audio_type", default="m4a", help="Audio file type, default is 'm4a'.")
+@click.option("--format", "-f", default="wav", help="Output audio format (default: wav)")
 @click.option("--pt", default=10, type=int, help="Optional parameter, default is 10.")
 @click.option("--tolerance", default=250.0, type=float, help="Tolerance value, default is 250.0.")
 @click.option("--forced-alignment", default=True, type=bool, help="Force alignment, default is True.")
@@ -16,11 +17,23 @@ from ...core.text import natural_sort_key
 def split(input_dir: str,
          output_dir: str,
          audio_type: str,
+         format: str,
          pt: int,
          tolerance: float,
          forced_alignment: bool,
          force_merge: bool = False) -> None:
-    """Command to split audio files based on VTT subtitles."""
+    """Command to split audio files based on VTT subtitles.
+
+    Examples:
+        # Basic usage with default wav output
+        asrtk split input_dir/ output_dir/
+
+        # Use MP3 output format
+        asrtk split input_dir/ output_dir/ -f mp3
+
+        # Use FLAC output format
+        asrtk split input_dir/ output_dir/ -f flac
+    """
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     inner_folder_name = input_dir.name
@@ -59,6 +72,7 @@ def split(input_dir: str,
             f"{input_dir}/{p[1]}",
             f"{input_dir}/{p[0]}",
             episode_dir,
+            format=format,
             tolerance=tolerance,
             period_threshold=pt,
             force_merge=force_merge,

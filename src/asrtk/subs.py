@@ -2,12 +2,12 @@ def split_audio_with_subtitles(
     vtt_file,
     audio_file,
     output_folder,
+    format="wav",
     tolerance=250,
     max_len=5,
-    # max_duration=11000,  # Merging time limit. Captions will be merged up to this duration.
-    max_duration=29500,  # Merging time limit. Captions will be merged up to this duration.
+    max_duration=29500,
     max_caption_length=840,
-    max_time_length=30,  # Hard limit, just skips longer captions.
+    max_time_length=30,
     period_threshold=8,
     n_samples=25,
     force_merge=False,
@@ -25,6 +25,7 @@ def split_audio_with_subtitles(
     - vtt_file (str): Path to the VTT subtitle file.
     - audio_file (str): Path to the corresponding audio file.
     - output_folder (str): Folder path where the split audio files and VTT files will be saved.
+    - format (str, optional): Output audio format (default: wav).
     - tolerance (int, optional): Additional time in milliseconds added to start and end of each chunk. Defaults to 500.
     - max_len (int, optional): Maximum number of captions to consider for merging. Defaults to 5.
     - max_duration (int, optional): Maximum duration of a chunk in milliseconds. Defaults to 10500.
@@ -218,9 +219,6 @@ def split_audio_with_subtitles(
         start_with_tolerance = max(0, int(start_time - tolerance))  # Ensure start time does not go below 0
         end_with_tolerance = min(len(audio), int(end_time + tolerance))  # Ensure end time does not exceed audio length
 
-        format = "flac"
-        chunk_name = f"{output_folder}/chunk_{i}.{format}"
-
         if forced_alignment and full_text.strip() != "":
             print("Using forced alignment...")
             # Convert start and end times from milliseconds to sample indices
@@ -289,8 +287,10 @@ def split_audio_with_subtitles(
             duration = num_samples / sample_rate
             start_with_tolerance = start_sec * 1000
             end_with_tolerance = end_sec * 1000
+            chunk_name = f"{output_folder}/chunk_{i}.{format}"
             torchaudio.save(chunk_name, chunk, sample_rate, format=format)
         else:
+            chunk_name = f"{output_folder}/chunk_{i}.{format}"
             chunk = audio[start_with_tolerance:end_with_tolerance]
             chunk.export(chunk_name, format=format)
 

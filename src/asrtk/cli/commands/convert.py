@@ -59,32 +59,34 @@ def convert_to_opus(input_file: Path, remove_original: bool = False) -> bool:
 @click.argument('input_dir', type=click.Path(exists=True))
 @click.option('--remove-original', is_flag=True, help="Remove original files after successful conversion")
 @click.option('--workers', '-w', type=int, default=4, help="Number of worker threads")
-def convert_opus(input_dir: str, remove_original: bool, workers: int) -> None:
-    """Convert M4A files to Opus format.
+@click.option('--input-type', '-t', type=str, default="flac", help="Input audio file type (default: flac)")
+def convert_opus(input_dir: str, remove_original: bool, workers: int, input_type: str) -> None:
+    """Convert audio files to Opus format.
 
-    This command recursively finds all M4A files in the input directory and converts them
-    to Opus format using ffmpeg. The converted files are saved in the same location with
-    .opus extension.
+    This command recursively finds all audio files of specified type in the input directory
+    and converts them to Opus format using ffmpeg. The converted files are saved in the same
+    location with .opus extension.
 
     Example:
-        # Convert all M4A files, keeping originals
+        # Convert all FLAC files (default), keeping originals
         asrtk convert-opus ./audio_files
 
-        # Convert and remove original files
-        asrtk convert-opus ./audio_files --remove-original
+        # Convert M4A files and remove originals
+        asrtk convert-opus ./audio_files -t m4a --remove-original
 
         # Use 8 worker threads
         asrtk convert-opus ./audio_files -w 8
     """
     input_path = Path(input_dir)
 
-    # Find all M4A files
-    m4a_files = list(input_path.rglob("*.m4a"))
-    if not m4a_files:
-        console.print("No M4A files found in input directory")
+    # Find all audio files of specified type
+    pattern = f"*.{input_type.lower()}"
+    audio_files = list(input_path.rglob(pattern))
+    if not audio_files:
+        console.print(f"No {input_type} files found in input directory")
         return
 
-    console.print(f"Found {len(m4a_files)} M4A files")
+    console.print(f"Found {len(audio_files)} {input_type} files")
 
     # Process files
     start_time = time.time()
@@ -95,7 +97,7 @@ def convert_opus(input_dir: str, remove_original: bool, workers: int) -> None:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_file = {
                 executor.submit(convert_to_opus, f, remove_original): f
-                for f in m4a_files
+                for f in audio_files
             }
 
             for future in as_completed(future_to_file):
@@ -107,14 +109,14 @@ def convert_opus(input_dir: str, remove_original: bool, workers: int) -> None:
 
                     # Update progress
                     elapsed = time.time() - start_time
-                    files_left = len(m4a_files) - completed
+                    files_left = len(audio_files) - completed
                     if completed > 0:
                         avg_time = elapsed / completed
                         est_remaining = (files_left * avg_time) / 60
 
                         status.update(
                             f"[bold green]Converting files... "
-                            f"{completed}/{len(m4a_files)} "
+                            f"{completed}/{len(audio_files)} "
                             f"({converted} converted) "
                             f"[yellow]~{est_remaining:.1f}min remaining"
                         )
