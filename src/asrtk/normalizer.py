@@ -8,7 +8,12 @@ from asrtk.variables import abbreviations_dict
 from asrtk.variables import unit_translations
 from asrtk.variables import punctuation_dict
 from asrtk.ordinals import normalize_ordinals
-from asrtk.utils import turkish_capitalize
+from .core.text import (
+    turkish_capitalize,
+    turkish_upper,
+    turkish_lower,
+    is_turkish_upper
+)
 from asrtk.variables import special_cases
 
 def detect_decimal_separator(s: str) -> str:

@@ -3,7 +3,7 @@ from pathlib import Path
 import rich_click as click
 
 from ...subs import split_audio_with_subtitles
-from ...utils import natural_sort_key
+from ...core.text import natural_sort_key
 
 @click.command()
 @click.argument("input_dir", type=click.Path(exists=True))

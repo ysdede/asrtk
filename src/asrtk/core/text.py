@@ -3,32 +3,29 @@ from typing import Tuple, Dict, List
 from collections import Counter
 import re
 
-def turkish_lower(text: str) -> str:
-    """Convert text to lowercase using Turkish-specific rules.
+# Turkish character mappings
+turkish_upper_chars = {
+    "ı": "I",
+    "i": "İ",
+    "ş": "Ş",
+    "ğ": "Ğ",
+    "ü": "Ü",
+    "ö": "Ö",
+    "ç": "Ç"
+}
+turkish_lower_chars = {v: k for k, v in turkish_upper_chars.items()}
 
-    Args:
-        text: Input text
+def turkish_upper(s: str) -> str:
+    """Convert text to uppercase using Turkish-specific rules."""
+    return "".join(turkish_upper_chars.get(c, c.upper()) for c in s)
 
-    Returns:
-        Lowercase text with Turkish character handling
-    """
-    # Turkish-specific lowercase mappings
-    tr_map = {
-        'İ': 'i',
-        'I': 'ı',
-        'Ğ': 'ğ',
-        'Ü': 'ü',
-        'Ş': 'ş',
-        'Ö': 'ö',
-        'Ç': 'ç'
-    }
+def turkish_lower(s: str) -> str:
+    """Convert text to lowercase using Turkish-specific rules."""
+    return "".join(turkish_lower_chars.get(c, c.lower()) for c in s)
 
-    # Apply Turkish mappings first
-    for upper, lower in tr_map.items():
-        text = text.replace(upper, lower)
-
-    # Then do standard lowercase
-    return text.lower()
+def is_turkish_upper(s: str) -> bool:
+    """Check if text is uppercase according to Turkish rules."""
+    return s == turkish_upper(s)
 
 def sanitize(text: str) -> str:
     """Sanitize text by removing HTML tags and normalizing whitespace.
@@ -117,3 +114,90 @@ def has_arabic(text: str) -> bool:
               ord(char) in range(0xFE70, 0xFEFF) or   # Arabic Presentation Forms-B
               ord(char) in range(0xFB50, 0xFDFF)      # Arabic Presentation Forms-A
               for char in text)
+
+def test_punc(captions, n_samples=10):
+    """Test punctuation in captions."""
+    # Join the first 'count' captions into a single string
+    sample = " ".join(caption.text for caption in captions[:n_samples])
+    # Count the number of periods in the sample
+    period_count = sample.count(".")
+    return period_count
+
+def remove_mismatched_characters(text):
+    """Remove mismatched quotes and parentheses."""
+    # Regex to find unclosed or unopened double quotes
+    text = re.sub(r'(^|[^"])(")([^"]*$|[^"])', r'\1\3', text)
+
+    # Regex to find unclosed or unopened parentheses
+    text = re.sub(r'(^|[^(\)])\)([^)\]]*$|[^(\)])', r'\1\2', text)  # Remove unopened closing parentheses
+    text = re.sub(r'(^|[^)\]])\(([^(\[]*$|[^)\]])', r'\1\2', text)  # Remove unclosed opening parentheses
+
+    return text.strip()
+
+def format_time(ms):
+    """Format milliseconds into VTT timestamp format."""
+    hours, ms = divmod(ms, 3600000)
+    minutes, ms = divmod(ms, 60000)
+    seconds, ms = divmod(ms, 1000)
+    return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}.{int(ms):03}"
+
+def natural_sort_key(s: str) -> list:
+    """Create a key for natural sorting of strings containing numbers.
+
+    Args:
+        s: String to create sort key for
+
+    Returns:
+        List of components for sorting (numbers as ints, text as lowercase)
+    """
+    return [int(text) if text.isdigit() else text.lower()
+            for text in re.split(r'([0-9]+)', s)]
+
+def romanize_turkish(text: str) -> str:
+    """Convert Turkish text to romanized form.
+
+    Args:
+        text: Turkish text to romanize
+
+    Returns:
+        Romanized text
+    """
+    # Map of Turkish characters to their Romanized equivalents
+    roman_map = {
+        "ı": "i",
+        "ğ": "g",
+        "ü": "u",
+        "ş": "s",
+        "ö": "o",
+        "ç": "c",
+        "İ": "i",
+        "Ğ": "g",
+        "Ü": "u",
+        "Ş": "s",
+        "Ö": "o",
+        "Ç": "c",
+    }
+
+    # Replace each Turkish character with its Romanized equivalent
+    romanized_text = "".join(roman_map.get(c, c) for c in text).lower()
+
+    # Additional normalization steps
+    romanized_text = re.sub(r"[.,;:!?\-()\"/]", " ", romanized_text)  # Replace punctuation with space
+    romanized_text = romanized_text.replace("'", "'")  # Specific replacement
+    romanized_text = re.sub(r"[^a-zA-Z' ]", "", romanized_text)  # Keep only letters, apostrophes, and spaces
+    romanized_text = re.sub(r"\s+", " ", romanized_text)  # Replace multiple spaces with a single space
+
+    return romanized_text.strip()
+
+def turkish_capitalize(s: str) -> str:
+    """Capitalize text using Turkish-specific rules.
+
+    Args:
+        s: Text to capitalize
+
+    Returns:
+        Capitalized text
+    """
+    if not s:
+        return s
+    return turkish_upper(s[0]) + s[1:]

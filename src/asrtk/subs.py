@@ -42,7 +42,12 @@ def split_audio_with_subtitles(
     import time
     import webvtt
     from pydub import AudioSegment
-    from asrtk.utils import test_punc, sanitize, format_time, remove_mismatched_characters
+    from asrtk.core.text import (
+        test_punc,
+        sanitize,
+        format_time,
+        remove_mismatched_characters
+    )
     from asrtk.variables import blacklist
     from pprint import pprint
     # import numpy as np

@@ -18,7 +18,7 @@ print(f'Device forced to {device} for MMS_FA model')
 # torch.set_num_threads(10)
 
 from torchaudio.pipelines import MMS_FA as bundle
-from asrtk.utils import romanize_turkish
+from ..core.text import romanize_turkish
 from asrtk.normalizer import Normalizer
 normalizer = Normalizer()
 
