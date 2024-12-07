@@ -7,60 +7,69 @@ import re
 from collections import Counter
 from typing import List, Tuple, Dict
 
-from ...core.vtt import read_vtt_file
+from ...core.vtt import read_vtt_file, is_timestamp_line, is_header_line
 
 console = Console()
 
-def extract_numbers(text: str) -> List[str]:
-    """Extract numbers from text using various patterns.
-
-    Looks for:
-    - Numbers with period as thousands separator (incorrect in Turkish)
-    - Numbers with comma as decimal separator (correct in Turkish)
-    - Numbers with multiple separators
-    - Plain numbers
-    """
-    patterns = [
-        # Incorrect format for Turkish (period as thousands separator)
-        (r'\b\d{1,3}(?:\.\d{3})+(?:,\d+)?\b', 'Period as thousands separator'),
-
-        # Correct Turkish format (comma as decimal)
-        (r'\b\d+,\d+\b', 'Comma as decimal separator'),
-
-        # Multiple separators (potentially problematic)
-        (r'\b\d+[.,]\d+[.,]\d+\b', 'Multiple separators'),
-
-        # Plain numbers (for reference)
-        (r'\b\d+\b', 'Plain number')
-    ]
+def extract_numbers(text: str, check_mixed: bool = False, check_multiple: bool = False) -> List[str]:
+    """Extract numbers from text using various patterns."""
+    # Simple regex to find numbers with period as decimal separator
+    pattern = r'(?<!\d)(\d+\.\d+)(?!\d)'  # Match numbers like 17.7, 3.14 but not timestamps
 
     found_numbers = []
-    for pattern, category in patterns:
-        matches = re.finditer(pattern, text)
-        for match in matches:
-            found_numbers.append((match.group(), category))
+    for match in re.finditer(pattern, text):
+        number = match.group(1)
+        # Skip if this line looks like a timestamp
+        if '-->' not in text:
+            found_numbers.append((number, 'Incorrect decimal format'))
 
     return found_numbers
+
+def process_vtt_file(vtt_file: Path, check_mixed: bool, check_multiple: bool) -> List[Tuple[str, str, str]]:
+    """Process a VTT file for number formats."""
+    content = vtt_file.read_text(encoding='utf-8')
+    results = []
+
+    for line in content.split('\n'):
+        # Skip VTT headers and empty lines
+        if not line.strip() or is_header_line(line):
+            continue
+
+        # Skip timestamp lines using proper VTT utility
+        if is_timestamp_line(line):
+            continue
+
+        numbers = extract_numbers(line, check_mixed, check_multiple)
+        for number, category in numbers:
+            results.append((number, category, line.strip()))
+            # Debug output
+            console.print(f"Found: {number} in line: {line.strip()}")
+
+    return results
 
 @click.command('count-numbers')
 @click.argument('input_dir', type=click.Path(exists=True))
 @click.option('--output', '-o', type=str, default="number_stats.txt", help="Output text file name")
 @click.option('--min-frequency', '-f', type=int, default=1, help="Minimum frequency to include")
-def count_numbers(input_dir: str, output: str, min_frequency: int) -> None:
-    """Analyze number formats and their frequencies in VTT files.
+@click.option('--check-mixed', is_flag=True, help="Check for mixed separator formats (1.234,56)")
+@click.option('--check-multiple', is_flag=True, help="Check for multiple separators (1.2.3)")
+def count_numbers(input_dir: str, output: str, min_frequency: int, check_mixed: bool, check_multiple: bool) -> None:
+    """Analyze floating-point number formats in VTT files.
 
-    This command processes VTT files and analyzes number formats, focusing on:
-    - Numbers with period as thousands separator (incorrect in Turkish)
-    - Numbers with comma as decimal separator (correct in Turkish)
-    - Numbers with multiple separators (potentially problematic)
-    - Plain numbers
+    By default, looks for:
+    - Incorrect decimal format using period (3.14)
+    - Correct decimal format using comma (3,14)
+
+    Optional checks:
+    --check-mixed: Also find mixed separator formats (1.234,56)
+    --check-multiple: Also find multiple separators (1.2.3)
 
     Examples:
-        # Basic usage
+        # Find incorrect decimal separators
         asrtk count-numbers ./subtitles
 
-        # With minimum frequency
-        asrtk count-numbers ./subtitles -f 2
+        # Include all checks
+        asrtk count-numbers ./subtitles --check-mixed --check-multiple
     """
     input_path = Path(input_dir)
 
@@ -81,19 +90,18 @@ def count_numbers(input_dir: str, output: str, min_frequency: int) -> None:
     with console.status("[bold green]Processing files...") as status:
         for vtt_file in vtt_files:
             try:
-                text_lines = read_vtt_file(vtt_file)
+                results = process_vtt_file(vtt_file, check_mixed, check_multiple)
 
-                for line in text_lines:
-                    numbers = extract_numbers(line)
-                    for number, category in numbers:
-                        number_counts[number] += 1
-                        category_counts[category] += 1
+                # Count results
+                for number, category, context in results:
+                    number_counts[number] += 1
+                    category_counts[category] += 1
 
-                        # Store context for the first few occurrences
-                        if number not in number_contexts:
-                            number_contexts[number] = []
-                        if len(number_contexts[number]) < 3:  # Store up to 3 examples
-                            number_contexts[number].append(line.strip())
+                    # Store context for the first few occurrences
+                    if number not in number_contexts:
+                        number_contexts[number] = []
+                    if len(number_contexts[number]) < 3:  # Store up to 3 examples
+                        number_contexts[number].append(context)
 
                 files_processed += 1
                 status.update(f"[bold green]Processing files... {files_processed}/{len(vtt_files)}")
