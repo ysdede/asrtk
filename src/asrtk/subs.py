@@ -10,7 +10,8 @@ from asrtk.core.text import (
     test_punc,
     sanitize,
     format_time,
-    remove_mismatched_characters
+    remove_mismatched_characters,
+    PunctuationRestorer
 )
 from asrtk.variables import blacklist
 
@@ -28,6 +29,18 @@ def is_blank_line(text: str) -> bool:
     # Consider line blank if empty or very short (1-2 chars)
     return not cleaned or len(cleaned) <= 2
 
+def is_effect_line(text: str) -> bool:
+    """Check if line is an effect line (enclosed in []).
+
+    Args:
+        text: Text line to check
+
+    Returns:
+        bool: True if line is an effect line
+    """
+    text = text.strip()
+    return text and text[0] == "[" and text[-1] == "]"
+
 def split_audio_with_subtitles(
     vtt_file,
     audio_file,
@@ -42,6 +55,8 @@ def split_audio_with_subtitles(
     n_samples=25,
     force_merge=False,
     forced_alignment=True,
+    keep_effects=False,
+    restore_punctuation=False,
 ):
     """
     Splits an audio file into chunks based on subtitles from a VTT file.
@@ -93,7 +108,20 @@ def split_audio_with_subtitles(
 
     # torch.set_num_threads(1)
 
-    silero_model, silero_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=False, onnx=False, trust_repo=True)
+    # Load models at the start
+    silero_model, silero_utils = torch.hub.load(
+        repo_or_dir='snakers4/silero-vad',
+        model='silero_vad',
+        force_reload=False,
+        onnx=False,
+        trust_repo=True
+    )
+
+    # Load punctuation restorer if enabled
+    punctuation_restorer = None
+    if restore_punctuation:
+        punctuation_restorer = PunctuationRestorer()
+
     (get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = silero_utils
 
     if not os.path.exists(output_folder):
@@ -210,6 +238,15 @@ def split_audio_with_subtitles(
             i += 1
             continue
 
+        # Handle effect lines
+        if is_effect_line(current_caption.text):
+            if not keep_effects:
+                print(f"Skipping effect line: {current_caption.text.strip()}")
+                i += 1
+                continue
+            else:
+                print(f"Processing effect line: {current_caption.text.strip()}")
+
         full_text = sanitize(current_caption.text)
 
         start_time = current_caption.start_in_seconds * 1000  # Start time in ms
@@ -223,6 +260,11 @@ def split_audio_with_subtitles(
             and (end_time - start_time) <= max_duration
         ):
             next_caption = captions[j]
+
+            # End merging if we hit an effect line
+            if is_effect_line(next_caption.text):
+                print(f"Hit effect line while merging, ending merge... [{next_caption.text}]")
+                break
 
             # End merging if we hit a blank line
             if is_blank_line(next_caption.text):
@@ -390,9 +432,15 @@ def split_audio_with_subtitles(
 
         # Save the corresponding VTT
         vtt_chunk_name = f"{output_folder}/chunk_{i}.vtt"
+
         with open(vtt_chunk_name, "w") as vtt_chunk:
             end_with_tolerance = max(0, end_with_tolerance - start_with_tolerance)
             full_text = sanitize(full_text)
+            
+            if restore_punctuation:
+                restored_text = punctuation_restorer.restore(full_text)
+                print(f"Restored: {full_text} -> {restored_text}")
+
             vtt_chunk.write("WEBVTT\n\n")
             vtt_chunk.write(f"{format_time(0)} --> {format_time(end_with_tolerance)}\n")
             vtt_chunk.write(full_text + "\n")
@@ -411,6 +459,7 @@ def split_audio_with_subtitles(
     exported_filelist.sort(key=lambda x: x[0], reverse=True)
     import csv
     output_file_path = f"{output_folder}/exported_filelist.csv"
+
     with open(output_file_path, "w", newline="", encoding="utf-8") as csvfile:
         fieldnames = ["cps", "vtt_chunk_name", "duration", "chars", "avg_cps"]
         writer = csv.writer(csvfile, delimiter="\t")
@@ -422,6 +471,7 @@ def split_audio_with_subtitles(
         writer.writerows(exported_filelist)
 
     print(f"Exported {i_real} captions to {output_folder}")
+
 
 def convert_to_int16(waveform: torch.Tensor) -> torch.Tensor:
     """Convert floating point waveform to 16-bit PCM.

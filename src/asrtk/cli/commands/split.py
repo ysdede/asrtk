@@ -14,6 +14,8 @@ from ...core.text import natural_sort_key
 @click.option("--tolerance", default=250.0, type=float, help="Tolerance value, default is 250.0.")
 @click.option("--forced-alignment", default=True, type=bool, help="Force alignment, default is True.")
 @click.option("-fm", "--force-merge", is_flag=True, help="Force merge, default is False.")
+@click.option("--keep-effects", is_flag=True, help="Keep effect lines (enclosed in []) instead of skipping them.")
+@click.option("--restore-punctuation", is_flag=True, help="Restore punctuation using BERT model.")
 def split(input_dir: str,
          output_dir: str,
          audio_type: str,
@@ -21,7 +23,9 @@ def split(input_dir: str,
          pt: int,
          tolerance: float,
          forced_alignment: bool,
-         force_merge: bool = False) -> None:
+         force_merge: bool = False,
+         keep_effects: bool = False,
+         restore_punctuation: bool = False) -> None:
     """Command to split audio files based on VTT subtitles.
 
     Examples:
@@ -76,5 +80,7 @@ def split(input_dir: str,
             tolerance=tolerance,
             period_threshold=pt,
             force_merge=force_merge,
-            forced_alignment=forced_alignment
+            forced_alignment=forced_alignment,
+            keep_effects=keep_effects,
+            restore_punctuation=restore_punctuation
         )

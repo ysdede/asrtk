@@ -2,6 +2,7 @@
 from typing import Tuple, Dict, List
 from collections import Counter
 import re
+from transformers import pipeline
 
 # Turkish character mappings
 turkish_upper_chars = {
@@ -27,6 +28,10 @@ def is_turkish_upper(s: str) -> bool:
     """Check if text is uppercase according to Turkish rules."""
     return s == turkish_upper(s)
 
+def fix_spaces(text: str) -> str:
+    """Fix spaces in text."""
+    return text.replace('   ', ' ').replace('  ', ' ')
+
 def sanitize(text: str) -> str:
     """Sanitize text by removing HTML tags and normalizing whitespace.
 
@@ -42,7 +47,19 @@ def sanitize(text: str) -> str:
     # Normalize whitespace
     text = ' '.join(text.split())
 
-    return text
+    return fix_spaces(text).strip()
+
+def sanitize_for_merge(text: str) -> str:
+    """Sanitize text for merging."""
+    text = sanitize(text).strip()
+
+    if text.endswith('...'):
+        text = f"{text[:-3]} "
+
+    if text.startswith('...'):
+        text = text[3:]
+
+    return fix_spaces(text).strip()
 
 def get_unique_words_with_frequencies(text: str) -> Tuple[List[str], Dict[str, int]]:
     """Get unique words and their frequencies from text.
@@ -201,3 +218,93 @@ def turkish_capitalize(s: str) -> str:
     if not s:
         return s
     return turkish_upper(s[0]) + s[1:]
+
+class PunctuationRestorer:
+    """Handles Turkish text punctuation restoration using BERT model."""
+
+    def __init__(self):
+        self.model = pipeline(
+            task="token-classification",
+            model="uygarkurt/bert-restore-punctuation-turkish"
+        )
+
+    def restore(self, text):
+        """
+        Restore punctuation in the given text.
+
+        Args:
+            text (str): Input text without punctuation
+
+        Returns:
+            str: Text with restored punctuation
+        """
+        # Remove existing punctuation
+        clean_text = re.sub(r'[^\w\s]', '', text)
+
+        # Get model predictions
+        predictions = self.model(clean_text)
+
+        return self._restore_punctuation(clean_text, predictions)
+
+    def _restore_punctuation(self, text, model_output):
+        """
+        Internal method to restore punctuation using model output.
+
+        Args:
+            text (str): Clean input text
+            model_output (list): Model predictions
+        """
+        predictions = sorted(model_output, key=lambda x: x['start'])
+        result = list(text)
+        offset = 0
+
+        i = 0
+        while i < len(predictions):
+            current_pred = predictions[i]
+
+            if (len(current_pred['word']) == 1 and
+                current_pred['word'] in ['.', ',', '?']):
+                punct = {
+                    'PERIOD': '.',
+                    'QUESTION_MARK': '?',
+                    'COMMA': ','
+                }[current_pred['entity']]
+
+                if result[current_pred['start'] + offset] != punct:
+                    result[current_pred['start'] + offset] = punct
+                i += 1
+                continue
+
+            if current_pred['word'].startswith('##'):
+                i += 1
+                continue
+
+            last_pos = i
+            while (last_pos + 1 < len(predictions) and
+                   predictions[last_pos + 1]['word'].startswith('##') and
+                   predictions[last_pos + 1]['start'] == predictions[last_pos]['end']):
+                last_pos += 1
+
+            if current_pred['entity'] in ['PERIOD', 'QUESTION_MARK', 'COMMA']:
+                insert_pos = predictions[last_pos]['end'] + offset
+
+                if (insert_pos < len(result) and
+                    result[insert_pos] in ['.', ',', '?']):
+                    punct = {
+                        'PERIOD': '.',
+                        'QUESTION_MARK': '?',
+                        'COMMA': ','
+                    }[current_pred['entity']]
+                    result[insert_pos] = punct
+                else:
+                    punct = {
+                        'PERIOD': '.',
+                        'QUESTION_MARK': '?',
+                        'COMMA': ','
+                    }[current_pred['entity']]
+                    result.insert(insert_pos, punct)
+                    offset += 1
+
+            i = last_pos + 1
+
+        return ''.join(result)
