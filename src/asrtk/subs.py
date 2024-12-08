@@ -11,9 +11,40 @@ from asrtk.core.text import (
     sanitize,
     format_time,
     remove_mismatched_characters,
-    PunctuationRestorer
+    PunctuationRestorer,
+    sanitize_for_merge
 )
 from asrtk.variables import blacklist
+
+# Initialize models at module level
+_silero_model = None
+_silero_utils = None
+_punctuation_restorer = None
+
+def _load_silero_model():
+    """Load Silero VAD model with caching."""
+    global _silero_model, _silero_utils
+    if _silero_model is None:
+        try:
+            _silero_model, _silero_utils = torch.hub.load(
+                repo_or_dir='snakers4/silero-vad',
+                model='silero_vad',
+                force_reload=False,
+                onnx=False,
+                trust_repo=True,
+                verbose=False  # Reduce output noise
+            )
+        except Exception as e:
+            print(f"Error loading Silero model: {e}")
+            raise
+    return _silero_model, _silero_utils
+
+def _get_punctuation_restorer():
+    """Get or initialize punctuation restorer."""
+    global _punctuation_restorer
+    if _punctuation_restorer is None:
+        _punctuation_restorer = PunctuationRestorer()
+    return _punctuation_restorer
 
 def is_blank_line(text: str) -> bool:
     """Check if a line is effectively blank (empty or just whitespace/special chars).
@@ -48,8 +79,8 @@ def split_audio_with_subtitles(
     format="wav",
     tolerance=250,
     max_len=5,
-    max_duration=29500,
-    max_caption_length=840,
+    max_duration=29800,
+    max_caption_length=720,
     max_time_length=30,
     period_threshold=8,
     n_samples=25,
@@ -108,21 +139,14 @@ def split_audio_with_subtitles(
 
     # torch.set_num_threads(1)
 
-    # Load models at the start
-    silero_model, silero_utils = torch.hub.load(
-        repo_or_dir='snakers4/silero-vad',
-        model='silero_vad',
-        force_reload=False,
-        onnx=False,
-        trust_repo=True
-    )
+    # Load Silero model
+    silero_model, silero_utils = _load_silero_model()
+    (get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = silero_utils
 
-    # Load punctuation restorer if enabled
+    # Get punctuation restorer if needed
     punctuation_restorer = None
     if restore_punctuation:
-        punctuation_restorer = PunctuationRestorer()
-
-    (get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = silero_utils
+        punctuation_restorer = _get_punctuation_restorer()
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -272,7 +296,7 @@ def split_audio_with_subtitles(
                 break  # Stop merging and use what we have so far
 
             next_text = sanitize(next_caption.text)
-            potential_merge = full_text + " " + next_text
+            potential_merge = sanitize_for_merge(full_text) + " " + sanitize_for_merge(next_text)
             potential_end_time = captions[j].end_in_seconds * 1000
 
             # Check the duration before actually merging
@@ -285,6 +309,10 @@ def split_audio_with_subtitles(
 
             # Check the character length of the potential merged caption
             if len(potential_merge.strip()) > max_caption_length:
+                break
+
+            # if current caption ends with punctuation and next caption does not, break to have a clean merge with punctuation
+            if sanitize_for_merge(full_text).endswith((".", "?", "!")) and not sanitize_for_merge(next_text).endswith((".", "?", "!")):
                 break
 
             full_text = sanitize(potential_merge)
@@ -433,14 +461,15 @@ def split_audio_with_subtitles(
         # Save the corresponding VTT
         vtt_chunk_name = f"{output_folder}/chunk_{i}.vtt"
 
-        with open(vtt_chunk_name, "w") as vtt_chunk:
-            end_with_tolerance = max(0, end_with_tolerance - start_with_tolerance)
-            full_text = sanitize(full_text)
-            
-            if restore_punctuation:
-                restored_text = punctuation_restorer.restore(full_text)
-                print(f"Restored: {full_text} -> {restored_text}")
+        end_with_tolerance = max(0, end_with_tolerance - start_with_tolerance)
+        full_text = sanitize(full_text)
 
+        if restore_punctuation:
+            restored_text = punctuation_restorer.restore(full_text)
+            print(f"Restored: {full_text} -> {restored_text}")
+            full_text = restored_text
+
+        with open(vtt_chunk_name, "w") as vtt_chunk:
             vtt_chunk.write("WEBVTT\n\n")
             vtt_chunk.write(f"{format_time(0)} --> {format_time(end_with_tolerance)}\n")
             vtt_chunk.write(full_text + "\n")

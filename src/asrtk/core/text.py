@@ -3,6 +3,8 @@ from typing import Tuple, Dict, List
 from collections import Counter
 import re
 from transformers import pipeline
+import os
+import torch
 
 # Turkish character mappings
 turkish_upper_chars = {
@@ -222,37 +224,32 @@ def turkish_capitalize(s: str) -> str:
 class PunctuationRestorer:
     """Handles Turkish text punctuation restoration using BERT model."""
 
+    _instance = None
+    _model = None
+
+    def __new__(cls):
+        """Singleton pattern to ensure only one model instance."""
+        if cls._instance is None:
+            cls._instance = super(PunctuationRestorer, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        self.model = pipeline(
-            task="token-classification",
-            model="uygarkurt/bert-restore-punctuation-turkish"
-        )
+        """Initialize the model only once."""
+        if PunctuationRestorer._model is None:
+            PunctuationRestorer._model = pipeline(
+                task="token-classification",
+                model="uygarkurt/bert-restore-punctuation-turkish"
+            )
 
     def restore(self, text):
-        """
-        Restore punctuation in the given text.
-
-        Args:
-            text (str): Input text without punctuation
-
-        Returns:
-            str: Text with restored punctuation
-        """
-        # Remove existing punctuation
-        clean_text = re.sub(r'[^\w\s]', '', text)
-
-        # Get model predictions
-        predictions = self.model(clean_text)
-
-        return self._restore_punctuation(clean_text, predictions)
+        """Restore punctuation in the given text."""
+        predictions = self._model(text)
+        return self._restore_punctuation(text, predictions)
 
     def _restore_punctuation(self, text, model_output):
         """
         Internal method to restore punctuation using model output.
-
-        Args:
-            text (str): Clean input text
-            model_output (list): Model predictions
+        Handles agglutinative suffixes, apostrophes, quotes, and Turkish punctuation rules.
         """
         predictions = sorted(model_output, key=lambda x: x['start'])
         result = list(text)
@@ -262,48 +259,78 @@ class PunctuationRestorer:
         while i < len(predictions):
             current_pred = predictions[i]
 
+            # Skip if the token itself is a punctuation mark
+            if current_pred['word'] == {
+                'PERIOD': '.',
+                'QUESTION_MARK': '?',
+                'COMMA': ','
+            }.get(current_pred['entity']):
+                i += 1
+                continue
+
+            # Skip existing punctuation predictions
             if (len(current_pred['word']) == 1 and
-                current_pred['word'] in ['.', ',', '?']):
+                current_pred['word'] in ['.', ',', '?', "'", '"']):
+                i += 1
+                continue
+
+            # Skip if current token is a suffix or part of apostrophe/quote
+            if (current_pred['word'].startswith('##') or
+                current_pred['word'] in ["'", '"'] or
+                (i > 0 and predictions[i-1]['word'] in ["'", '"'])):
+                i += 1
+                continue
+
+            # Find the last part of the current word
+            last_pos = i
+            while last_pos + 1 < len(predictions):
+                next_pred = predictions[last_pos + 1]
+                if (next_pred['word'].startswith('##') or
+                    next_pred['word'] in ["'", '"'] or
+                    next_pred['start'] == predictions[last_pos]['end']):
+                    last_pos += 1
+                else:
+                    break
+
+            # Add punctuation after complete word
+            if current_pred['entity'] in ['PERIOD', 'QUESTION_MARK', 'COMMA']:
+                insert_pos = predictions[last_pos]['end'] + offset
+
+                # Don't insert punctuation in the middle of a word with apostrophe/quote
+                if (insert_pos < len(result) and
+                    (result[insert_pos] in ["'", '"'] or
+                     (insert_pos > 0 and result[insert_pos-1] in ["'", '"']))):
+                    i = last_pos + 1
+                    continue
+
+                # For comma, check if there's a space after the insertion point
+                if (current_pred['entity'] == 'COMMA' and
+                    insert_pos < len(result) - 1 and
+                    not result[insert_pos].isspace()):
+                    i = last_pos + 1
+                    continue
+
+                # Check for existing punctuation in surrounding positions
+                has_punct_before = (insert_pos > 0 and
+                                  result[insert_pos - 1] in ['.', ',', '?'])
+                has_punct_after = (insert_pos < len(result) and
+                                 result[insert_pos] in ['.', ',', '?'])
+                has_quote_after = (insert_pos < len(result) and
+                                 result[insert_pos] == '"')
+
+                # Skip if there's already punctuation nearby or quote after
+                if has_punct_before or has_punct_after or has_quote_after:
+                    i = last_pos + 1
+                    continue
+
+                # Add punctuation if no existing punctuation nearby
                 punct = {
                     'PERIOD': '.',
                     'QUESTION_MARK': '?',
                     'COMMA': ','
                 }[current_pred['entity']]
-
-                if result[current_pred['start'] + offset] != punct:
-                    result[current_pred['start'] + offset] = punct
-                i += 1
-                continue
-
-            if current_pred['word'].startswith('##'):
-                i += 1
-                continue
-
-            last_pos = i
-            while (last_pos + 1 < len(predictions) and
-                   predictions[last_pos + 1]['word'].startswith('##') and
-                   predictions[last_pos + 1]['start'] == predictions[last_pos]['end']):
-                last_pos += 1
-
-            if current_pred['entity'] in ['PERIOD', 'QUESTION_MARK', 'COMMA']:
-                insert_pos = predictions[last_pos]['end'] + offset
-
-                if (insert_pos < len(result) and
-                    result[insert_pos] in ['.', ',', '?']):
-                    punct = {
-                        'PERIOD': '.',
-                        'QUESTION_MARK': '?',
-                        'COMMA': ','
-                    }[current_pred['entity']]
-                    result[insert_pos] = punct
-                else:
-                    punct = {
-                        'PERIOD': '.',
-                        'QUESTION_MARK': '?',
-                        'COMMA': ','
-                    }[current_pred['entity']]
-                    result.insert(insert_pos, punct)
-                    offset += 1
+                result.insert(insert_pos, punct)
+                offset += 1
 
             i = last_pos + 1
 
