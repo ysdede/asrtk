@@ -14,6 +14,20 @@ from asrtk.core.text import (
 )
 from asrtk.variables import blacklist
 
+def is_blank_line(text: str) -> bool:
+    """Check if a line is effectively blank (empty or just whitespace/special chars).
+
+    Args:
+        text: Text line to check
+
+    Returns:
+        bool: True if line is blank or effectively blank
+    """
+    # Strip whitespace and common special characters
+    cleaned = text.strip(" \t\n\r\f\v-_.")
+    # Consider line blank if empty or very short (1-2 chars)
+    return not cleaned or len(cleaned) <= 2
+
 def split_audio_with_subtitles(
     vtt_file,
     audio_file,
@@ -190,6 +204,12 @@ def split_audio_with_subtitles(
                 i += 1
                 continue
 
+        # Skip blank captions
+        if is_blank_line(current_caption.text):
+            print(f"Blank/short caption, skipping... [{current_caption.text}]")
+            i += 1
+            continue
+
         full_text = sanitize(current_caption.text)
 
         start_time = current_caption.start_in_seconds * 1000  # Start time in ms
@@ -203,6 +223,12 @@ def split_audio_with_subtitles(
             and (end_time - start_time) <= max_duration
         ):
             next_caption = captions[j]
+
+            # End merging if we hit a blank line
+            if is_blank_line(next_caption.text):
+                print(f"Hit blank line while merging, ending merge... [{next_caption.text}]")
+                break  # Stop merging and use what we have so far
+
             next_text = sanitize(next_caption.text)
             potential_merge = full_text + " " + next_text
             potential_end_time = captions[j].end_in_seconds * 1000
