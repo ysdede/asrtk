@@ -1,3 +1,19 @@
+import torch
+import torchaudio
+from pydub import AudioSegment
+import gc
+from typing import List, Tuple
+import webvtt
+from pprint import pprint
+
+from asrtk.core.text import (
+    test_punc,
+    sanitize,
+    format_time,
+    remove_mismatched_characters
+)
+from asrtk.variables import blacklist
+
 def split_audio_with_subtitles(
     vtt_file,
     audio_file,
@@ -43,6 +59,7 @@ def split_audio_with_subtitles(
     import time
     import webvtt
     from pydub import AudioSegment
+    import gc
     from asrtk.core.text import (
         test_punc,
         sanitize,
@@ -235,13 +252,28 @@ def split_audio_with_subtitles(
             # Extract the audio chunk with the applied tolerance
             waveform = audio_pt[:, start_sample_with_tolerance:end_sample_with_tolerance]
 
-            speech_timestamps = get_speech_timestamps(waveform, silero_model, threshold=0.6, sampling_rate=sample_rate)
+            # Add context manager for VAD
+            with torch.no_grad():
+                speech_timestamps = get_speech_timestamps(waveform, silero_model, threshold=0.6, sampling_rate=sample_rate)
             silero_model.reset_states()
 
             if len(speech_timestamps) == 0:
                 silent_chunk_name = f"{silent_chunk_folder}/chunk_{i}.{format}"
                 print(f"No speech detected, saving to {silent_chunk_name}...")
-                torchaudio.save(silent_chunk_name, waveform, sample_rate, format=format)
+                # Convert silent chunks to 16-bit too
+                waveform_16bit = convert_to_int16(waveform)
+                torchaudio.save(
+                    silent_chunk_name,
+                    waveform_16bit,
+                    sample_rate,
+                    format=format,
+                    encoding='PCM_S',
+                    bits_per_sample=16
+                )
+                # Add garbage collection
+                del waveform
+                torch.cuda.empty_cache()
+                gc.collect()
                 i += 1
                 continue
 
@@ -257,11 +289,24 @@ def split_audio_with_subtitles(
             print(f"Aligning: {full_text_4_alignment}")
 
             try:
-                waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
+                with torch.no_grad():
+                    waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
             except Exception as e:
                 print(f"Error aligning VAD trimmed waveform. Restoring backup...")
-                torchaudio.save(f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}", waveform, sample_rate, format=format)
-                # waveform = backup_waveform
+                waveform_16bit = convert_to_int16(waveform)
+                torchaudio.save(
+                    f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}",
+                    waveform_16bit,
+                    sample_rate,
+                    format=format,
+                    encoding='PCM_S',
+                    bits_per_sample=16
+                )
+                # Add garbage collection
+                del waveform
+                del backup_waveform
+                torch.cuda.empty_cache()
+                gc.collect()
                 i += 1
                 continue
 
@@ -288,11 +333,32 @@ def split_audio_with_subtitles(
             start_with_tolerance = start_sec * 1000
             end_with_tolerance = end_sec * 1000
             chunk_name = f"{output_folder}/chunk_{i}.{format}"
-            torchaudio.save(chunk_name, chunk, sample_rate, format=format)
+
+            # Convert to 16-bit PCM before saving
+            chunk_16bit = convert_to_int16(chunk)
+            torchaudio.save(
+                chunk_name,
+                chunk_16bit,
+                sample_rate,
+                format=format,
+                encoding='PCM_S',  # Specify signed PCM encoding
+                bits_per_sample=16  # Explicitly set 16 bits
+            )
+
+            # After saving the chunk, add garbage collection
+            del chunk
+            del waveform
+            if 'backup_waveform' in locals():
+                del backup_waveform
+            torch.cuda.empty_cache()
+            gc.collect()
         else:
             chunk_name = f"{output_folder}/chunk_{i}.{format}"
             chunk = audio[start_with_tolerance:end_with_tolerance]
             chunk.export(chunk_name, format=format)
+            # Add garbage collection for non-forced alignment path
+            del chunk
+            gc.collect()
 
         print(f"Exported Audio: {chunk_name}")
 
@@ -330,3 +396,26 @@ def split_audio_with_subtitles(
         writer.writerows(exported_filelist)
 
     print(f"Exported {i_real} captions to {output_folder}")
+
+def convert_to_int16(waveform: torch.Tensor) -> torch.Tensor:
+    """Convert floating point waveform to 16-bit PCM.
+
+    Args:
+        waveform: Input waveform tensor (float32)
+
+    Returns:
+        16-bit PCM waveform tensor
+    """
+    # Ensure the input is float32
+    if waveform.dtype != torch.float32:
+        waveform = waveform.float()
+
+    # Normalize to [-1, 1]
+    max_val = torch.max(torch.abs(waveform))
+    if max_val > 0:
+        waveform = waveform / max_val
+
+    # Scale to 16-bit range and convert
+    waveform = (waveform * 32767).clamp(-32768, 32767).short()
+
+    return waveform
