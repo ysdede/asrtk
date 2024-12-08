@@ -28,6 +28,7 @@ from .commands.numbers import count_numbers
 from .commands.abbreviations import find_abbreviations
 from .commands.fix_timestamps import fix_timestamps
 from .commands.convert import convert_opus
+from .commands.chunk import chunk
 
 # Register commands
 cli.add_command(create_wordset)
@@ -46,6 +47,7 @@ cli.add_command(count_numbers)
 cli.add_command(find_abbreviations)
 cli.add_command(fix_timestamps)
 cli.add_command(convert_opus)
+cli.add_command(chunk)
 
 if __name__ == "__main__":
     cli()

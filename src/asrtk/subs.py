@@ -1,11 +1,27 @@
+"""Audio subtitle processing utilities."""
+import os
+import time
+import gc
+import io
+import csv
+import urllib.error
+import subprocess
+import json
+import tempfile
+from typing import List, Tuple
+from pathlib import Path
+
+# Third-party imports
 import torch
 import torchaudio
-from pydub import AudioSegment
-import gc
-from typing import List, Tuple
+from torchaudio.transforms import Resample
 import webvtt
+from pydub import AudioSegment
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from pprint import pprint
 
+# Local imports
 from asrtk.core.text import (
     test_punc,
     sanitize,
@@ -15,28 +31,60 @@ from asrtk.core.text import (
     sanitize_for_merge
 )
 from asrtk.variables import blacklist
+from asrtk.align import aligner
 
-# Initialize models at module level
+# Initialize models and console at module level
 _silero_model = None
 _silero_utils = None
 _punctuation_restorer = None
+console = Console()
 
 def _load_silero_model():
-    """Load Silero VAD model with caching."""
+    """Load Silero VAD model with caching and retries."""
     global _silero_model, _silero_utils
+
     if _silero_model is None:
-        try:
-            _silero_model, _silero_utils = torch.hub.load(
-                repo_or_dir='snakers4/silero-vad',
-                model='silero_vad',
-                force_reload=False,
-                onnx=False,
-                trust_repo=True,
-                verbose=False  # Reduce output noise
-            )
-        except Exception as e:
-            print(f"Error loading Silero model: {e}")
-            raise
+        max_retries = 3
+        retry_delay = 5  # seconds
+
+        # Try to load from cache first
+        cache_dir = torch.hub.get_dir()
+
+        for attempt in range(max_retries):
+            try:
+                _silero_model, _silero_utils = torch.hub.load(
+                    repo_or_dir='snakers4/silero-vad',
+                    model='silero_vad',
+                    force_reload=False,
+                    onnx=False,
+                    trust_repo=True,
+                    verbose=False,
+                    skip_validation=True  # Skip GitHub validation
+                )
+                break
+            except (urllib.error.URLError, ConnectionError, http.client.RemoteDisconnected) as e:
+                if attempt < max_retries - 1:
+                    print(f"Connection error loading Silero model (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # On final attempt, try loading from local cache only
+                    try:
+                        print("Attempting to load from local cache only...")
+                        _silero_model, _silero_utils = torch.hub.load(
+                            repo_or_dir='snakers4/silero-vad',
+                            model='silero_vad',
+                            force_reload=False,
+                            source='local',  # Try local only
+                            onnx=False,
+                            trust_repo=True,
+                            verbose=False
+                        )
+                    except Exception as local_error:
+                        print(f"Failed to load from local cache: {local_error}")
+                        raise RuntimeError("Could not load Silero model after multiple attempts") from e
+
     return _silero_model, _silero_utils
 
 def _get_punctuation_restorer():
@@ -72,6 +120,113 @@ def is_effect_line(text: str) -> bool:
     text = text.strip()
     return text and text[0] == "[" and text[-1] == "]"
 
+def probe_audio(audio_file: Path) -> dict:
+    """Get audio file properties using FFmpeg."""
+    try:
+        result = subprocess.run([
+            'ffprobe',
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_streams',
+            '-show_format',
+            str(audio_file)
+        ], capture_output=True, text=True, check=True)
+
+        info = json.loads(result.stdout)
+        audio_stream = next(s for s in info['streams'] if s['codec_type'] == 'audio')
+        duration = float(info['format'].get('duration', 0))
+
+        # More accurate bit depth detection
+        bit_depth = None
+
+        # Try to get bit depth from various fields
+        if audio_stream.get('bits_per_sample'):
+            bit_depth = int(audio_stream['bits_per_sample'])
+        elif audio_stream.get('bits_per_raw_sample'):
+            bit_depth = int(audio_stream['bits_per_raw_sample'])
+        else:
+            # For compressed formats, estimate from codec and format
+            codec = audio_stream.get('codec_name', '').lower()
+            if codec == 'aac':
+                bit_depth = 16  # AAC typically uses 16-bit internally
+            elif codec in ['mp3', 'vorbis']:
+                bit_depth = 16
+            elif codec in ['flac', 'alac']:
+                bit_depth = 16  # unless specified otherwise
+            elif 'pcm' in codec:
+                # PCM formats usually indicate bits in the name
+                if 's16' in codec:
+                    bit_depth = 16
+                elif 's24' in codec:
+                    bit_depth = 24
+                elif 's32' in codec:
+                    bit_depth = 32
+                else:
+                    bit_depth = 16  # default PCM
+            else:
+                bit_depth = 16  # default to 16-bit if unknown
+
+        props = {
+            'channels': int(audio_stream.get('channels', 0)),
+            'sample_rate': int(audio_stream.get('sample_rate', 0)),
+            'duration': duration,
+            'bit_depth': bit_depth,
+            'size': int(info['format'].get('size', 0)),
+            'codec': audio_stream.get('codec_name', 'unknown'),
+            'sample_fmt': audio_stream.get('sample_fmt', 'unknown'),
+            'bit_rate': audio_stream.get('bit_rate', 'unknown')
+        }
+
+        return props
+
+    except Exception as e:
+        console.print(f"[red]Error probing audio file: {e}")
+        raise
+
+def preprocess_large_audio(audio_file: Path, max_size_gb: float = 3.5) -> Path:
+    """Preprocess audio file if it would be too large when uncompressed."""
+    try:
+        # Get audio properties
+        props = probe_audio(audio_file)
+
+        # Calculate uncompressed size in bytes (duration * sample_rate * channels * bytes_per_sample)
+        uncompressed_size = (
+            props['duration'] *
+            props['sample_rate'] *
+            props['channels'] *
+            (props['bit_depth'] // 8)
+        )
+
+        # Convert to GB
+        uncompressed_size_gb = uncompressed_size / (1024**3)
+
+        if uncompressed_size_gb > max_size_gb or props['channels'] > 1 or props['sample_rate'] != 16000:
+            console.print(f"[yellow]Audio would be {uncompressed_size_gb:.1f}GB uncompressed")
+            console.print("[yellow]Preprocessing audio (converting to mono, 16kHz)...")
+
+            # Create temp file
+            temp_dir = Path(tempfile.gettempdir())
+            processed_file = temp_dir / f"processed_{audio_file.stem}.wav"
+
+            # FFmpeg command to convert to mono and resample
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', str(audio_file),
+                '-ac', '1',  # mono
+                '-ar', '16000',  # 16kHz
+                '-acodec', 'pcm_s16le',  # 16-bit PCM
+                str(processed_file)
+            ]
+
+            subprocess.run(cmd, check=True, capture_output=True)
+            return processed_file
+
+        return audio_file
+
+    except Exception as e:
+        console.print(f"[red]Error preprocessing audio: {e}")
+        raise
+
 def split_audio_with_subtitles(
     vtt_file,
     audio_file,
@@ -89,55 +244,36 @@ def split_audio_with_subtitles(
     keep_effects=False,
     restore_punctuation=False,
 ):
-    """
-    Splits an audio file into chunks based on subtitles from a VTT file.
+    """Split audio file into chunks based on subtitles."""
+    audio_file = Path(audio_file)
 
-    This function processes a VTT file and its corresponding audio file, splits the audio into
-    chunks based on the subtitles, and exports each chunk as a separate WAV file along with
-    its corresponding subtitle in a VTT file. It includes several checks such as caption length,
-    caption duration, and timestamp order to ensure the integrity of the chunks.
+    # Preprocess audio if needed
+    with console.status("[bold blue]Checking audio file...") as status:
+        try:
+            props = probe_audio(audio_file)
+            console.print(f"""[green]Audio properties:
+Duration: {format_duration(props['duration'])}
+Channels: {props['channels']}
+Sample rate: {props['sample_rate']} Hz
+Bit depth: {props['bit_depth']} bits
+Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
 
-    Parameters:
-    - vtt_file (str): Path to the VTT subtitle file.
-    - audio_file (str): Path to the corresponding audio file.
-    - output_folder (str): Folder path where the split audio files and VTT files will be saved.
-    - format (str, optional): Output audio format (default: wav).
-    - tolerance (int, optional): Additional time in milliseconds added to start and end of each chunk. Defaults to 500.
-    - max_len (int, optional): Maximum number of captions to consider for merging. Defaults to 5.
-    - max_duration (int, optional): Maximum duration of a chunk in milliseconds. Defaults to 10500.
-    - max_caption_length (int, optional): Maximum character length of a caption. Defaults to 840.
-    - max_time_length (int, optional): Maximum duration of a caption in seconds. Defaults to 30.
+            processed_file = preprocess_large_audio(audio_file)
+            if processed_file != audio_file:
+                console.print("[green]Using preprocessed audio file")
+                audio_file = processed_file
 
-    The function skips over captions that are too long, have unordered timestamps, or are blank.
-    It also checks for the number of periods in the first set of captions to determine whether
-    to merge captions based on sentence completion.
+        except Exception as e:
+            console.print(f"[red]Failed to process audio: {e}")
+            raise
 
-    No return value.
-    """
+    # Create output directories
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
-    import os
-    import time
-    import webvtt
-    from pydub import AudioSegment
-    import gc
-    from asrtk.core.text import (
-        test_punc,
-        sanitize,
-        format_time,
-        remove_mismatched_characters
-    )
-    from asrtk.variables import blacklist
-    from pprint import pprint
-    # import numpy as np
-
-    if forced_alignment:
-        import io
-        import torch
-        import torchaudio
-        from torchaudio.transforms import Resample
-        from asrtk.align import aligner
-
-    # torch.set_num_threads(1)
+    silent_chunk_folder = os.path.join(output_folder, "silent_chunks")
+    if not os.path.exists(silent_chunk_folder):
+        os.makedirs(silent_chunk_folder)
 
     # Load Silero model
     silero_model, silero_utils = _load_silero_model()
@@ -148,43 +284,45 @@ def split_audio_with_subtitles(
     if restore_punctuation:
         punctuation_restorer = _get_punctuation_restorer()
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
-    silent_chunk_folder = os.path.join(output_folder, "silent_chunks")
-    if not os.path.exists(silent_chunk_folder):
-        os.makedirs(silent_chunk_folder)
-
-    # Try loading with torchaudio, if fails convert to WAV using pydub
-    audio = AudioSegment.from_file(audio_file)
-    sample_rate = audio.frame_rate
+    # Load audio with progress indication
+    with console.status("[bold blue]Loading audio file...", spinner="dots") as status:
+        audio = AudioSegment.from_file(audio_file)
+        console.print(f"[green]Loaded audio: {format_duration(len(audio)/1000)}, {audio.channels} channels, {audio.frame_rate} Hz")
+        sample_rate = audio.frame_rate
 
     if forced_alignment:
-        # Export the AudioSegment object to a byte stream
-        audio_byte_stream = io.BytesIO()
-        audio.export(audio_byte_stream, format="wav")
-        audio_byte_stream.seek(0)  # Go to the start of the stream
-        # Use torchaudio to load the audio data from the byte stream
-        audio_pt, sample_rate = torchaudio.load(audio_byte_stream)
+        with console.status("[bold blue]Preparing audio for forced alignment...", spinner="dots") as status:
+            # Export the AudioSegment object to a byte stream
+            audio_byte_stream = io.BytesIO()
+            status.update("[bold blue]Converting audio format...")
+            audio.export(audio_byte_stream, format="wav")
+            audio_byte_stream.seek(0)
 
-        # Check if the waveform is stereo and downmix if needed
-        if audio_pt.shape[0] == 2:
-            print("Stereo! Downmixing...")
-            audio_pt = torch.mean(audio_pt, dim=0, keepdim=True)
+            # Load audio data
+            status.update("[bold blue]Loading audio data...")
+            audio_pt, sample_rate = torchaudio.load(audio_byte_stream)
 
-        # Resampling if needed
-        if sample_rate != 16000:
-            print(f"Resampling to 16000 Hz...")
-            resampler = Resample(orig_freq=sample_rate, new_freq=16000, lowpass_filter_width=256, rolloff=0.99)
-            audio_pt = resampler(audio_pt)
-            sample_rate = 16000
+            # Check if stereo and downmix if needed
+            if audio_pt.shape[0] == 2:
+                console.print("[yellow]Stereo audio detected, downmixing to mono...")
+                audio_pt = torch.mean(audio_pt, dim=0, keepdim=True)
 
-        # Calculate audio length
-        audio_length_seconds = int(audio_pt.size(-1) / sample_rate)
-        audio_len_str = time.strftime("%H:%M:%S", time.gmtime(audio_length_seconds))
-        print(f"Audio len: {audio_len_str}.")
+            # Resample if needed
+            if sample_rate != 16000:
+                console.print(f"[yellow]Resampling from {sample_rate} Hz to 16000 Hz...")
+                resampler = Resample(orig_freq=sample_rate, new_freq=16000, lowpass_filter_width=256, rolloff=0.99)
+                audio_pt = resampler(audio_pt)
+                sample_rate = 16000
 
-    captions = list(webvtt.read(vtt_file))
+            # Calculate and show audio length
+            audio_length_seconds = int(audio_pt.size(-1) / sample_rate)
+            audio_len_str = time.strftime("%H:%M:%S", time.gmtime(audio_length_seconds))
+            console.print(f"[green]Audio length: {audio_len_str}")
+
+    # Load captions
+    with console.status("[bold blue]Loading captions...", spinner="dots"):
+        captions = list(webvtt.read(vtt_file))
+        console.print(f"[green]Loaded {len(captions)} captions")
 
     i = 0
     i_real = 0
@@ -486,7 +624,6 @@ def split_audio_with_subtitles(
 
     # sort exported_filelist by cps
     exported_filelist.sort(key=lambda x: x[0], reverse=True)
-    import csv
     output_file_path = f"{output_folder}/exported_filelist.csv"
 
     with open(output_file_path, "w", newline="", encoding="utf-8") as csvfile:
@@ -524,3 +661,17 @@ def convert_to_int16(waveform: torch.Tensor) -> torch.Tensor:
     waveform = (waveform * 32767).clamp(-32768, 32767).short()
 
     return waveform
+
+def format_duration(seconds: float) -> str:
+    """Format duration in seconds to human readable string.
+
+    Returns HH:MM:SS if >= 1 hour, else MM:SS
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    else:
+        return f"{minutes:02d}:{secs:02d}"
