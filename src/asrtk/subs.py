@@ -212,6 +212,7 @@ def preprocess_large_audio(audio_file: Path, max_size_gb: float = 3.5) -> Path:
             cmd = [
                 'ffmpeg', '-y',
                 '-i', str(audio_file),
+                '-af', 'aresample=resampler=soxr:precision=32:dither_method=triangular',
                 '-ac', '1',  # mono
                 '-ar', '16000',  # 16kHz
                 '-acodec', 'pcm_s16le',  # 16-bit PCM
@@ -234,8 +235,8 @@ def split_audio_with_subtitles(
     format="wav",
     tolerance=250,
     max_len=5,
-    max_duration=29800,
-    max_caption_length=720,
+    max_duration=29000,
+    max_caption_length=640,
     max_time_length=30,
     period_threshold=8,
     n_samples=25,
@@ -319,10 +320,14 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             audio_len_str = time.strftime("%H:%M:%S", time.gmtime(audio_length_seconds))
             console.print(f"[green]Audio length: {audio_len_str}")
 
-    # Load captions
-    with console.status("[bold blue]Loading captions...", spinner="dots"):
-        captions = list(webvtt.read(vtt_file))
+    try:
+        # Load captions
+        with console.status("[bold blue]Loading captions...", spinner="dots"):
+            captions = list(webvtt.read(vtt_file))
         console.print(f"[green]Loaded {len(captions)} captions")
+    except Exception as e:
+        console.print(f"[red]Failed to load captions: {e}")
+        return
 
     i = 0
     i_real = 0
@@ -411,6 +416,10 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
 
         full_text = sanitize(current_caption.text)
 
+        # Dok
+        if full_text.endswith("..") and not full_text.endswith("..."):
+            full_text = full_text[:-2] + "."
+
         start_time = current_caption.start_in_seconds * 1000  # Start time in ms
         end_time = current_caption.end_in_seconds * 1000  # End time in ms
         j = i + 1
@@ -492,18 +501,18 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             silero_model.reset_states()
 
             if len(speech_timestamps) == 0:
-                silent_chunk_name = f"{silent_chunk_folder}/chunk_{i}.{format}"
-                print(f"No speech detected, saving to {silent_chunk_name}...")
+                # silent_chunk_name = f"{silent_chunk_folder}/chunk_{i}.{format}"
                 # Convert silent chunks to 16-bit too
-                waveform_16bit = convert_to_int16(waveform)
-                torchaudio.save(
-                    silent_chunk_name,
-                    waveform_16bit,
-                    sample_rate,
-                    format=format,
-                    encoding='PCM_S',
-                    bits_per_sample=16
-                )
+                # waveform_16bit = convert_to_int16(waveform)
+                # torchaudio.save(
+                #     silent_chunk_name,
+                #     waveform_16bit,
+                #     sample_rate,
+                #     format=format,
+                #     encoding='PCM_S',
+                #     bits_per_sample=16
+                # )
+                print(f"No speech detected. Skipping...")
                 # Add garbage collection
                 del waveform
                 torch.cuda.empty_cache()
@@ -527,15 +536,15 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                     waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
             except Exception as e:
                 print(f"Error aligning VAD trimmed waveform. Restoring backup...")
-                waveform_16bit = convert_to_int16(waveform)
-                torchaudio.save(
-                    f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}",
-                    waveform_16bit,
-                    sample_rate,
-                    format=format,
-                    encoding='PCM_S',
-                    bits_per_sample=16
-                )
+                # waveform_16bit = convert_to_int16(waveform)
+                # torchaudio.save(
+                #     f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}",
+                #     waveform_16bit,
+                #     sample_rate,
+                #     format=format,
+                #     encoding='PCM_S',
+                #     bits_per_sample=16
+                # )
                 # Add garbage collection
                 del waveform
                 del backup_waveform
