@@ -61,6 +61,12 @@ def sanitize_for_merge(text: str) -> str:
     if text.startswith('...'):
         text = text[3:]
 
+    # if text.endswith('..'):
+    #     text = f"{text[:-2]} "
+
+    # if text.startswith('..'):
+    #     text = text[2:]
+
     return fix_spaces(text).strip()
 
 def get_unique_words_with_frequencies(text: str) -> Tuple[List[str], Dict[str, int]]:

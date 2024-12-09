@@ -235,7 +235,7 @@ def split_audio_with_subtitles(
     format="wav",
     tolerance=250,
     max_len=5,
-    max_duration=29000,
+    max_duration=29400,
     max_caption_length=640,
     max_time_length=30,
     period_threshold=8,
@@ -386,10 +386,11 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             i += 1
             continue
 
-        if current_caption.text.strip()[0] == "[" and current_caption.text.strip()[-1] == "]":
-            print(f"Skipping {current_caption.text.strip()}")
-            i += 1
-            continue
+        # See: # Handle effect lines
+        # if current_caption.text.strip()[0] == "[" and current_caption.text.strip()[-1] == "]":
+        #     print(f"Skipping {current_caption.text.strip()}")
+        #     i += 1
+        #     continue
 
         # Check for unordered timestamps
         if i < len(captions) - 1:
@@ -418,7 +419,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
 
         # Dok
         if full_text.endswith("..") and not full_text.endswith("..."):
-            full_text = full_text[:-2] + "."
+            full_text = f"{full_text[:-2]}"
 
         start_time = current_caption.start_in_seconds * 1000  # Start time in ms
         end_time = current_caption.end_in_seconds * 1000  # End time in ms
@@ -443,7 +444,12 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 break  # Stop merging and use what we have so far
 
             next_text = sanitize(next_caption.text)
-            potential_merge = sanitize_for_merge(full_text) + " " + sanitize_for_merge(next_text)
+
+            if next_text.startswith("..") and not next_text.startswith("..."):
+                # remove the leading ".."
+                next_text = f"{next_text[2:]} "
+
+            potential_merge = f"{sanitize_for_merge(full_text)} {sanitize_for_merge(next_text)}"
             potential_end_time = captions[j].end_in_seconds * 1000
 
             # Check the duration before actually merging
@@ -463,6 +469,10 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 break
 
             full_text = sanitize(potential_merge)
+
+            if full_text.endswith(".."):
+                full_text = f"{full_text[:-2]}"
+
             end_time = potential_end_time
             j += 1
 
@@ -512,7 +522,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 #     encoding='PCM_S',
                 #     bits_per_sample=16
                 # )
-                print(f"No speech detected. Skipping...")
+                print("No speech detected. Skipping...")
                 # Add garbage collection
                 del waveform
                 torch.cuda.empty_cache()
@@ -535,7 +545,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 with torch.no_grad():
                     waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
             except Exception as e:
-                print(f"Error aligning VAD trimmed waveform. Restoring backup...")
+                print("Error aligning VAD trimmed waveform. Restoring backup...")
                 # waveform_16bit = convert_to_int16(waveform)
                 # torchaudio.save(
                 #     f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}",
@@ -588,21 +598,17 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 bits_per_sample=16  # Explicitly set 16 bits
             )
 
-            # After saving the chunk, add garbage collection
-            del chunk
             del waveform
             if 'backup_waveform' in locals():
                 del backup_waveform
             torch.cuda.empty_cache()
-            gc.collect()
         else:
             chunk_name = f"{output_folder}/chunk_{i}.{format}"
             chunk = audio[start_with_tolerance:end_with_tolerance]
             chunk.export(chunk_name, format=format)
-            # Add garbage collection for non-forced alignment path
-            del chunk
-            gc.collect()
-
+        gc.collect()
+        # After saving the chunk, add garbage collection
+        del chunk
         print(f"Exported Audio: {chunk_name}")
 
         # Save the corresponding VTT
