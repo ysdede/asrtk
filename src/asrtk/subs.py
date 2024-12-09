@@ -235,8 +235,8 @@ def split_audio_with_subtitles(
     format="wav",
     tolerance=250,
     max_len=5,
-    max_duration=29000,
-    max_caption_length=640,
+    max_duration=29500,
+    max_caption_length=720,
     max_time_length=30,
     period_threshold=8,
     n_samples=25,
@@ -386,10 +386,10 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             i += 1
             continue
 
-        if current_caption.text.strip()[0] == "[" and current_caption.text.strip()[-1] == "]":
-            print(f"Skipping {current_caption.text.strip()}")
-            i += 1
-            continue
+        # if current_caption.text.strip()[0] == "[" and current_caption.text.strip()[-1] == "]":
+        #     print(f"Skipping {current_caption.text.strip()}")
+        #     i += 1
+        #     continue
 
         # Check for unordered timestamps
         if i < len(captions) - 1:
@@ -463,6 +463,10 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 break
 
             full_text = sanitize(potential_merge)
+
+            full_text = full_text.replace("... ...", " ")
+            full_text = full_text.replace(".. ..", " ")
+
             end_time = potential_end_time
             j += 1
 
