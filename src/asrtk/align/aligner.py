@@ -11,23 +11,52 @@ import numpy as np
 print(torch.__version__)
 print(torchaudio.__version__)
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cuda"
-print(f'Device forced to {device} for MMS_FA model')
-# torch.set_num_threads(10)
+def get_device():
+    """Get device and ensure consistent usage across the module."""
+    if torch.cuda.is_available():
+        try:
+            # Test CUDA memory first
+            torch.cuda.empty_cache()
+            test_tensor = torch.tensor([1.0], device="cuda")
+            del test_tensor
+            return torch.device("cuda")
+        except RuntimeError as e:
+            print(f"CUDA error: {e}")
+            print("Falling back to CPU")
+            return torch.device("cpu")
+    return torch.device("cpu")
+
+# Initialize device once
+device = get_device()
+print(f'Using device: {device} for MMS_FA model')
+
+try:
+    # Initialize models with error handling
+    model = bundle.get_model()
+    if device.type == "cuda":
+        model = model.cuda()  # Use cuda() instead of to(device) for better error handling
+    else:
+        model = model.cpu()
+
+    tokenizer = bundle.get_tokenizer()
+    aligner = bundle.get_aligner()
+    print(f"Successfully initialized MMS_FA model on {device}")
+except Exception as e:
+    print(f"Error initializing MMS_FA model: {e}")
+    print("Falling back to CPU")
+    device = torch.device("cpu")
+    model = bundle.get_model().cpu()
+    tokenizer = bundle.get_tokenizer()
+    aligner = bundle.get_aligner()
 
 normalizer = Normalizer()
 
-model = bundle.get_model()
-model.to(device)
-
-tokenizer = bundle.get_tokenizer()
-aligner = bundle.get_aligner()
-
-
 def compute_alignments(waveform: torch.Tensor, transcript: List[str]):
+    """Compute alignments keeping data on device."""
     with torch.inference_mode():
-        emission, _ = model(waveform.to(device))
+        # Ensure waveform is on correct device
+        waveform = waveform.to(device)
+        emission, _ = model(waveform)
         token_spans = aligner(emission[0], tokenizer(transcript))
     return emission, token_spans
 
@@ -102,38 +131,35 @@ def do_it(audio, text, sample_rate=bundle.sample_rate):
         text)  # TODO We have a new normalizer
     text_normalized = romanize_turkish(text_normalized)
 
+    # Handle different input types and ensure tensor is on correct device
     if torch.is_tensor(audio):
-        waveform = audio
-    elif isinstance(audio, list) or isinstance(audio, np.ndarray):
-        # Convert list or numpy array to PyTorch tensor
-        waveform = torch.tensor(audio, dtype=torch.float32)
+        waveform = audio.to(device)
+    elif isinstance(audio, (list, np.ndarray)):
+        waveform = torch.tensor(audio, dtype=torch.float32, device=device)
     elif isinstance(audio, str):
         waveform, sample_rate = torchaudio.load(audio)
-    elif not torch.is_tensor(audio):
-        raise TypeError(
-            "Audio must be a PyTorch tensor, a list, or a numpy array")
+        waveform = waveform.to(device)
+    else:
+        raise TypeError("Audio must be a PyTorch tensor, a list, or a numpy array")
 
-    if waveform.shape[0] == 2:  # Check if the waveform is stereo
+    if waveform.shape[0] == 2:
         print('Stereo! down-mixing to mono...')
         waveform = torch.mean(waveform, dim=0, keepdim=True)
 
     if sample_rate != bundle.sample_rate:
-        resampler = Resample(orig_freq=sample_rate,
-                             new_freq=bundle.sample_rate)
+        resampler = Resample(
+            orig_freq=sample_rate,
+            new_freq=bundle.sample_rate
+        ).to(device)  # Move resampler to same device
         waveform = resampler(waveform)
-        sample_rate = bundle.sample_rate  # Güncellenmiş örneklenme hızını kullanın
+        sample_rate = bundle.sample_rate
 
-    # print(f'{waveform.shape=}')  # Debug: Print waveform shape
-
-    # Add a batch dimension if it's missing
+    # Add batch dimension if needed
     waveform = waveform.unsqueeze(0) if waveform.ndim == 1 else waveform
 
-    # Ensure sample rate matches expected rate
     assert sample_rate == bundle.sample_rate
 
-    # Tokenize transcript
     transcript = text_normalized.split()
-    # print('transcript:', transcript)
     tokens = tokenizer(transcript)
 
     try:
@@ -145,7 +171,6 @@ def do_it(audio, text, sample_rate=bundle.sample_rate):
         raise
 
     num_frames = emission.size(1)
-
     return waveform, token_spans, num_frames, emission, sample_rate, transcript
 
 
@@ -214,49 +239,24 @@ def trim_last_word(word, text, audio_clip):
 
 
 def trim_last_word_cuda(word, text, audio_clip_tensor):
-    """
-    Trims the last occurrence of the specified word from the audio_clip_tensor.
-    Assumes audio_clip_tensor is a CUDA tensor.
-
-    Parameters:
-    - word: The word to trim from the end of the audio.
-    - text: Full text corresponding to the audio clip for forced alignment.
-    - audio_clip_tensor: The audio clip as a CUDA tensor.
-
-    Returns:
-    - Trimmed audio as a CUDA tensor.
-    """
-
+    """Process audio while keeping it on GPU."""
     word = romanize_turkish(word)
 
     if text:
+        # Keep data on device throughout processing
         waveform, token_spans, num_frames, emission, sample_rate, transcript = do_it(
-            audio_clip_tensor.cpu().numpy(), text)
+            audio_clip_tensor, text)  # No need for cpu().numpy()
+
         start_frame, end_frame = find_word_timings(
             word, waveform, transcript, token_spans, sample_rate, num_frames)
 
         if start_frame is not None and end_frame is not None:
-            start_time = start_frame / sample_rate
-            end_time = end_frame / sample_rate
-
-            # print(f"Word '{word}' timings: {start_time:.3f} - {end_time:.3f} sec. {start_frame} - {end_frame} frames.")
-
-            # Calculate the number of frames to trim using CUDA tensor
             num_frames_to_trim = start_frame - 400
             if num_frames_to_trim > 0:
-                # Trim the audio_clip_tensor directly
-                trimmed_audio_tensor = audio_clip_tensor[:num_frames_to_trim]
-                return trimmed_audio_tensor
-            else:
-                # print("trim_last_word_cuda: The calculated start_frame is less than the trimming offset.")
-                return audio_clip_tensor
-        else:
-            print(
-                f'trim_last_word_cuda: Word "{word}" not found in the transcript.')
-            return audio_clip_tensor
-    else:
-        print("trim_last_word_cuda: No text provided.")
+                return audio_clip_tensor[:num_frames_to_trim]
+
         return audio_clip_tensor
+    return audio_clip_tensor
 
 
 def trim_end_silence(word, text, audio_clip):
@@ -290,28 +290,21 @@ def trim_end_silence(word, text, audio_clip):
 
 
 def trim_end_silence_cuda(word, text, audio_clip):
+    """Process audio while keeping it on GPU."""
     word = romanize_turkish(word)
 
     if text:
+        # Keep data on device throughout processing
         waveform, token_spans, num_frames, emission, sample_rate, transcript = do_it(
             audio_clip, text)
 
-    start_frame, end_frame = find_word_timings(
-        word, waveform, transcript, token_spans, sample_rate, num_frames)
+        start_frame, end_frame = find_word_timings(
+            word, waveform, transcript, token_spans, sample_rate, num_frames)
 
-    if start_frame is not None and end_frame is not None:
-        # Convert frame to sample index if needed
-        start_time = start_frame / sample_rate
-        end_time = end_frame / sample_rate
+        if start_frame is not None and end_frame is not None:
+            return audio_clip[:end_frame]
 
-        # print(f"Word '{word}' timings: {start_time:.3f} - {end_time:.3f} sec. {start_frame} - {end_frame} frames.")
-
-        # Trim using tensor slicing
-        trimmed_audio = audio_clip[:end_frame]
-        return trimmed_audio
-    else:
-        # print(f'trim_end_silence: Word "{word}" not found in the transcript.')
-        return audio_clip
+    return audio_clip
 
 
 def crop_end_silence(audio, sample_rate, silence_threshold=0.01, min_silence_length=0.5, crop_length=0.4):

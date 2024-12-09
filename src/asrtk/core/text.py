@@ -226,6 +226,7 @@ class PunctuationRestorer:
 
     _instance = None
     _model = None
+    _device = None
 
     def __new__(cls):
         """Singleton pattern to ensure only one model instance."""
@@ -236,10 +237,16 @@ class PunctuationRestorer:
     def __init__(self):
         """Initialize the model only once."""
         if PunctuationRestorer._model is None:
+            # Determine device
+            self._device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            print(f"Initializing BERT model on device: {self._device}")
+
             PunctuationRestorer._model = pipeline(
                 task="token-classification",
-                model="uygarkurt/bert-restore-punctuation-turkish"
+                model="uygarkurt/bert-restore-punctuation-turkish",
+                device=0 if torch.cuda.is_available() else -1  # 0 for first GPU, -1 for CPU
             )
+            print(f"Successfully loaded BERT model on {self._device}")
 
     def restore(self, text):
         """Restore punctuation in the given text."""
