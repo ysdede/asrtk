@@ -1,15 +1,27 @@
 # ASRTK: Automatic Speech Recognition Toolkit
 
-ASRTK is a comprehensive Python toolkit for building and deploying end-to-end Automatic Speech Recognition (ASR) systems.  
-This project is a rewrite and open-source release of the previously closed-source toolkit known as "YTK".  
-It provides a streamlined workflow and a collection of utilities to simplify the process of creating, training, and evaluating ASR models.
+ASRTK is a Python toolkit focused on collecting and processing high-quality audio datasets for training Automatic Speech Recognition (ASR) systems. It provides a streamlined workflow and utilities for downloading, cleaning, and preparing audio data with accurate transcriptions.
 
 ## Key Features
 
-- **Data Preparation**: Easily prepare and preprocess speech datasets, including data cleaning, normalization, and feature extraction.
-- *Model Training: Train state-of-the-art ASR models using popular architectures and techniques. (Coming soon)*
-- **Evaluation and Testing**: Evaluate the performance of trained models using various metrics and perform inference on new audio data.
-- ~~Deployment: Deploy trained ASR models in real-world applications with support for different platforms and environments.~~
+### Data Collection & Preparation
+- **YouTube Integration**: Automated download of videos with subtitles from playlists
+- **Audio Processing**: Advanced audio splitting, conversion, and resampling capabilities
+- **Subtitle Processing**: Comprehensive VTT file handling with support for cleaning and normalization
+
+### Text Processing & Analysis
+- **Text Normalization**: Intelligent handling of abbreviations, numbers, and special characters
+- **Pattern Analysis**: Tools for analyzing word frequencies and text patterns
+
+### Audio Processing
+- **Forced Alignment**: Precise audio-text alignment using Silero VAD models
+- **Format Optimization**: Efficient audio format conversion with multi-threading support
+- **Quality Control**: Advanced handling of silence detection and failed alignments
+
+### Workflow Automation
+- **Batch Processing**: Efficient handling of large datasets
+- **Pipeline Integration**: Seamless workflow from data collection to model training
+- **Progress Tracking**: Detailed logging and progress monitoring
 
 ## Requirements
 
@@ -18,108 +30,99 @@ It provides a streamlined workflow and a collection of utilities to simplify the
 - NumPy
 - SciPy
 - librosa
+- pydub
+- transformers
+- BeautifulSoup4
+- Additional dependencies in `requirements.txt`
 
-<!-- start docs-include-installation -->
-
-## Getting Started
-
-To get started with ASRTK, follow these steps:
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/asrtk.git
-   ```
-
-2. Navigate to the project directory:
-   ```bash
-   cd asrtk
-   ```
-
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-<!-- end docs-include-installation -->
-
-## Usage
-
-<!-- start docs-include-usage -->
-
-Running `asrtk --help` or `python -m asrtk --help` shows a list of all of the available options and commands:
-
-<!-- [[[cog
-import cog
-from asrtk import cli
-from click.testing import CliRunner
-runner = CliRunner()
-result = runner.invoke(cli.cli, ["--help"], terminal_width=88)
-help = result.output.replace("Usage: cli", "Usage: asrtk")
-cog.outl(f"\n```sh\nasrtk --help\n{help.rstrip()}\n```\n")
-]]] -->
-<!-- [[[end]]] -->
-
-<!-- end docs-include-usage -->
-
-## Dataset Creation Workflow
-
-### 1. Download YouTube Content with Subtitles
-
-The first step in creating an ASR dataset is collecting source material. ASRTK provides a command to download YouTube playlists while ensuring the videos have subtitles:
+## Installation
 
 ```bash
-asrtk download-playlist WORK_DIR [PLAYLIST_URL] [PLAYLIST_FILE]
+# Clone the repository
+git clone https://github.com/ysdede/asrtk.git
+
+# Navigate to project directory
+cd asrtk
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-This command:
-- Downloads videos from YouTube playlists that have subtitles
-- Organizes downloads into playlist-specific directories
-- Caches playlist metadata to avoid redundant downloads
-- Supports both single playlist URLs or a file containing multiple playlist URLs
+## Quick Start Guide
 
-Options:
-- `WORK_DIR`: Directory where downloads and metadata will be stored
-- `PLAYLIST_URL`: (Optional) Direct YouTube playlist URL
-- `PLAYLIST_FILE`: (Optional) Path to a file containing playlist URLs (one per line)
-
-Example usage:
+### 1. Download Training Data
 ```bash
-# Download a single playlist
-asrtk download-playlist ./my_dataset "https://www.youtube.com/playlist?list=PLAYLIST_ID"
+# Download from a single playlist
+asrtk download-playlist ./dataset "https://www.youtube.com/playlist?list=PLAYLIST_ID"
 
-# Download multiple playlists from a file
-asrtk download-playlist ./my_dataset --playlist-file playlists.txt
+# Or download from multiple playlists
+asrtk download-playlist ./dataset --playlist-file playlists.txt
 ```
 
-The command will create a structured directory containing:
-```
-my_dataset/
-├── json_info/              # Cached playlist metadata
-│   └── PLAYLIST_ID.json    # Playlist information cache
-│
-└── Playlist_Name/          # One directory per playlist
-    ├── video1.m4a         # Audio files
-    ├── video1.tr.vtt      # Subtitle files
-    ├── video2.m4a
-    └── video2.tr.vtt
+### 2. Process Audio Files
+```bash
+# Split audio into chunks based on subtitles
+asrtk split ./dataset ./chunks --tolerance 500 -fm --restore-punctuation
+
+# Convert to optimized format
+asrtk convert-opus ./chunks --remove-original --workers 8
 ```
 
-This downloaded content serves as the raw material for the next step in the pipeline, where audio tracks and subtitles are processed to create aligned training pairs for ASR systems.
+### 3. Clean and Normalize Text
+```bash
+# Apply text normalization rules
+asrtk apply-patch rules.json ./chunks
+
+# Analyze text patterns
+asrtk create-wordset ./chunks --min-frequency 5
+```
+
+## Advanced Usage
+
+### Audio Processing Options
+```bash
+asrtk split INPUT_DIR OUTPUT_DIR [OPTIONS]
+  --tolerance MILLISECONDS    Alignment tolerance
+  --force-merge, -fm         Merge consecutive subtitles
+  --restore-punctuation      Use BERT for punctuation restoration
+  --keep-effects            Preserve effect annotations
+```
+
+### Text Processing Features
+```bash
+asrtk apply-patch RULES INPUT_DIR [OPTIONS]
+  --dry-run                 Preview changes
+  --show-replacements       Display detailed replacement plan
+  --verbose                Show per-file changes
+```
+
+### Batch Processing
+```bash
+asrtk convert-opus INPUT_DIR [OPTIONS]
+  --input-type FORMAT       Source audio format
+  --remove-original        Delete source files after conversion
+  --workers NUMBER         Parallel processing threads
+```
+
+## Project Structure
+```
+asrtk/
+├── dataset/               # Downloaded content
+│   ├── json_info/        # Metadata cache
+│   └── content/          # Audio and subtitle files
+├── chunks/               # Processed audio segments
+└── output/              # Final processed dataset
+```
 
 ## Contributing
 
-We welcome contributions from the community! Whether it's adding new features, improving documentation, or reporting bugs, please feel free to make a pull request or open an issue.
+We welcome contributions! Please feel free to submit pull requests or open issues for:
+- Bug fixes
+- Feature additions
+- Documentation improvements
+- Performance optimizations
 
 ## License
 
-ASRTK is released under the MIT license. Contributions must adhere to this license.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-yt-dlp --flat-playlist --lazy-playlist --print-to-file url r:\youtube\khanAcademi.txt https://www.youtube.com/@**/playlists
-
-asrtk download-playlist r:\youtube\khanAkademiTr  --file r:\youtube\khanAcademi.txt
-
-asrtk split R:\youtube\khanAkademiTr\Depresyon__Bipolar_Bozukluk_ve_Anksiyete___Psikoloji r:\youtube\test_output -fm --tolerance 500
-
-yt-dlp --flat-playlist -J https://www.youtube.com/@esrinart > r:\youtube\esrinart.json
-
-asrtk download-playlist r:\youtube\esrinart --file r:\youtube\esrinart.json
