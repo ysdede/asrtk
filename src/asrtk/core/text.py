@@ -244,11 +244,11 @@ class PunctuationRestorer:
     def restore(self, text):
         """
         Restore punctuation in the given text.
-        Only applies predictions with confidence score above 90%.
+        Only applies predictions with confidence score above 70%.
         """
         predictions = [
             pred for pred in self._model(text)
-            if pred['score'] >= 0.9  # Only keep high confidence predictions
+            if pred['score'] >= 0.7  # Only keep high confidence predictions
         ]
         return self._restore_punctuation(text, predictions)
 
@@ -256,7 +256,7 @@ class PunctuationRestorer:
         """
         Internal method to restore punctuation using model output.
         Handles agglutinative suffixes, apostrophes, quotes, and Turkish punctuation rules.
-        Only applies predictions with confidence score above 90%.
+        Only applies predictions with confidence score above 70%.
         """
         predictions = sorted(model_output, key=lambda x: x['start'])
         result = list(text)
@@ -267,7 +267,7 @@ class PunctuationRestorer:
             current_pred = predictions[i]
 
             # Skip predictions with low confidence
-            if current_pred['score'] < 0.9:
+            if current_pred['score'] < 0.85:
                 i += 1
                 continue
 
@@ -290,12 +290,13 @@ class PunctuationRestorer:
 
             # Only process punctuation if this is the last token of a word
             if current_pred['entity'] in ['PERIOD', 'QUESTION_MARK', 'COMMA']:
-                # Skip if we're in the middle of a word (more tokens follow)
-                if last_pos > i:
+                # Get the position after the complete word
+                insert_pos = predictions[last_pos]['end'] + offset
+
+                # Skip if current token is a suffix - let the main token handle punctuation
+                if current_pred['word'].startswith('##'):
                     i = last_pos + 1
                     continue
-
-                insert_pos = predictions[last_pos]['end'] + offset
 
                 # Don't insert punctuation in the middle of a word with apostrophe/quote
                 if (insert_pos < len(result) and
