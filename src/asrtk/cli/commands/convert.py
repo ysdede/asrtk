@@ -10,8 +10,8 @@ import time
 console = Console()
 
 def compression_level() -> int:
-    """Get a random compression level between 1 and 9."""
-    return random.randint(1, 9)
+    """Get a random compression level between 2 and 7."""
+    return random.randint(3, 8)
 
 def convert_to_opus(input_file: Path, remove_original: bool = False) -> bool:
     """Convert a single audio file to opus format.
@@ -29,13 +29,14 @@ def convert_to_opus(input_file: Path, remove_original: bool = False) -> bool:
         console.print(f"[yellow]Skipping {input_file.name} - opus file already exists[/yellow]")
         return False
 
+    # https://ffmpeg.org/ffmpeg-codecs.html#libopus-1
     try:
         cmd = [
             "ffmpeg", "-y",
             "-i", str(input_file),
             "-c:a", "libopus",
-            "-b:a", "24K",
-            "-application", "voip",
+            "-b:a", "32K",
+            "-application", "audio",
             "-frame_duration", "40",
             "-compression_level", str(compression_level()),
             str(output_file)

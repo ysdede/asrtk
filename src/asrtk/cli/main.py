@@ -15,39 +15,44 @@ help_config = click.RichHelpConfiguration(
 def cli() -> None:
     """An open-source Python toolkit designed to streamline the development and enhancement of ASR systems."""
 
-# Import and register commands
-from .commands.wordset import create_wordset
-from .commands.patch import apply_patch
-from .commands.download import download_playlist, download_channel
-from .commands.fix import fix
-from .commands.find import find_words, find_arabic, find_patterns, find_brackets
-from .commands.split import split
-from .commands.merge import merge_lines
-from .commands.remove import remove_lines
-from .commands.numbers import count_numbers
-from .commands.abbreviations import find_abbreviations
-from .commands.fix_timestamps import fix_timestamps
-from .commands.convert import convert_opus
-from .commands.chunk import chunk
+def register_commands():
+    """Register CLI commands lazily to avoid loading unnecessary dependencies."""
+    # Import commands only when needed
+    from .commands.wordset import create_wordset
+    from .commands.patch import apply_patch
+    from .commands.download import download_playlist, download_channel
+    from .commands.fix import fix
+    from .commands.find import find_words, find_arabic, find_patterns, find_brackets
+    from .commands.split import split
+    from .commands.merge import merge_lines
+    from .commands.remove import remove_lines
+    from .commands.numbers import count_numbers
+    from .commands.abbreviations import find_abbreviations
+    from .commands.fix_timestamps import fix_timestamps
+    from .commands.convert import convert_opus
+    from .commands.chunk import chunk
 
-# Register commands
-cli.add_command(create_wordset)
-cli.add_command(apply_patch)
-cli.add_command(download_playlist)
-cli.add_command(download_channel)
-cli.add_command(fix)
-cli.add_command(find_words)
-cli.add_command(find_arabic)
-cli.add_command(find_patterns)
-cli.add_command(find_brackets)
-cli.add_command(split)
-cli.add_command(merge_lines)
-cli.add_command(remove_lines)
-cli.add_command(count_numbers)
-cli.add_command(find_abbreviations)
-cli.add_command(fix_timestamps)
-cli.add_command(convert_opus)
-cli.add_command(chunk)
+    # Register commands
+    cli.add_command(create_wordset)
+    cli.add_command(apply_patch)
+    cli.add_command(download_playlist)
+    cli.add_command(download_channel)
+    cli.add_command(fix)
+    cli.add_command(find_words)
+    cli.add_command(find_arabic)
+    cli.add_command(find_patterns)
+    cli.add_command(find_brackets)
+    cli.add_command(split)
+    cli.add_command(merge_lines)
+    cli.add_command(remove_lines)
+    cli.add_command(count_numbers)
+    cli.add_command(find_abbreviations)
+    cli.add_command(fix_timestamps)
+    cli.add_command(convert_opus)
+    cli.add_command(chunk)
+
+# Register commands when module is imported
+register_commands()
 
 if __name__ == "__main__":
     cli()

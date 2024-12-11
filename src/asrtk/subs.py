@@ -31,7 +31,6 @@ from asrtk.core.text import (
     sanitize_for_merge
 )
 from asrtk.variables import blacklist
-from asrtk.align import aligner
 
 # Initialize models and console at module level
 _silero_model = None
@@ -204,8 +203,9 @@ def preprocess_large_audio(audio_file: Path, max_size_gb: float = 3.5) -> Path:
             console.print(f"[yellow]Audio would be {uncompressed_size_gb:.1f}GB uncompressed")
             console.print("[yellow]Preprocessing audio (converting to mono, 16kHz)...")
 
-            # Create temp file
-            temp_dir = Path(tempfile.gettempdir())
+            # Create temp file in asrtk subdirectory
+            temp_dir = Path(tempfile.gettempdir()) / "asrtk"
+            temp_dir.mkdir(exist_ok=True)
             processed_file = temp_dir / f"processed_{audio_file.stem}.wav"
 
             # FFmpeg command to convert to mono and resample
@@ -219,8 +219,19 @@ def preprocess_large_audio(audio_file: Path, max_size_gb: float = 3.5) -> Path:
                 str(processed_file)
             ]
 
-            subprocess.run(cmd, check=True, capture_output=True)
-            return processed_file
+            try:
+                subprocess.run(cmd, check=True, capture_output=True)
+                return processed_file
+            except Exception as e:
+                console.print(f"[red]FFmpeg conversion failed: {e}")
+                raise
+            finally:
+                # Clean up the processed file if it exists
+                if processed_file.exists():
+                    try:
+                        processed_file.unlink()
+                    except Exception as e:
+                        console.print(f"[yellow]Warning: Could not remove temp file {processed_file}: {e}")
 
         return audio_file
 
@@ -292,6 +303,8 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
         sample_rate = audio.frame_rate
 
     if forced_alignment:
+        # Only import aligner when forced alignment is enabled
+        from asrtk.align import aligner
         with console.status("[bold blue]Preparing audio for forced alignment...", spinner="dots") as status:
             # Export the AudioSegment object to a byte stream
             audio_byte_stream = io.BytesIO()
@@ -418,7 +431,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
 
         # Dok
         if full_text.endswith("..") and not full_text.endswith("..."):
-            full_text = full_text[:-2] + "."
+            full_text = f"{full_text[:-2]}."
 
         start_time = current_caption.start_in_seconds * 1000  # Start time in ms
         end_time = current_caption.end_in_seconds * 1000  # End time in ms
@@ -443,7 +456,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 break  # Stop merging and use what we have so far
 
             next_text = sanitize(next_caption.text)
-            potential_merge = sanitize_for_merge(full_text) + " " + sanitize_for_merge(next_text)
+            potential_merge = f"{sanitize_for_merge(full_text)} {sanitize_for_merge(next_text)}"
             potential_end_time = captions[j].end_in_seconds * 1000
 
             # Check the duration before actually merging
@@ -458,8 +471,12 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             if len(potential_merge.strip()) > max_caption_length:
                 break
 
+            # detect if the current caption ends with "..." and the next caption starts with "...", continuous lines
+            continuous_lines = full_text.strip().endswith(("...", "..")) and next_text.strip().startswith(("...", ".."))
+
             # if current caption ends with punctuation and next caption does not, break to have a clean merge with punctuation
-            if sanitize_for_merge(full_text).endswith((".", "?", "!")) and not sanitize_for_merge(next_text).endswith((".", "?", "!")):
+            # exception for continuous lines, keep merging
+            if sanitize_for_merge(full_text).endswith((".", "?", "!")) and not sanitize_for_merge(next_text).endswith((".", "?", "!")) and not continuous_lines:
                 break
 
             full_text = sanitize(potential_merge)
@@ -516,7 +533,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 #     encoding='PCM_S',
                 #     bits_per_sample=16
                 # )
-                print(f"No speech detected. Skipping...")
+                print("No speech detected. Skipping...")
                 # Add garbage collection
                 del waveform
                 torch.cuda.empty_cache()
@@ -539,7 +556,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 with torch.no_grad():
                     waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
             except Exception as e:
-                print(f"Error aligning VAD trimmed waveform. Restoring backup...")
+                print("Error aligning VAD trimmed waveform. Restoring backup...")
                 # waveform_16bit = convert_to_int16(waveform)
                 # torchaudio.save(
                 #     f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}",
@@ -592,21 +609,17 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 bits_per_sample=16  # Explicitly set 16 bits
             )
 
-            # After saving the chunk, add garbage collection
-            del chunk
             del waveform
             if 'backup_waveform' in locals():
                 del backup_waveform
             torch.cuda.empty_cache()
-            gc.collect()
         else:
             chunk_name = f"{output_folder}/chunk_{i}.{format}"
             chunk = audio[start_with_tolerance:end_with_tolerance]
             chunk.export(chunk_name, format=format)
-            # Add garbage collection for non-forced alignment path
-            del chunk
-            gc.collect()
-
+        gc.collect()
+        # After saving the chunk, add garbage collection
+        del chunk
         print(f"Exported Audio: {chunk_name}")
 
         # Save the corresponding VTT

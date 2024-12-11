@@ -1,9 +1,49 @@
 """Command for splitting audio files based on VTT subtitles."""
 from pathlib import Path
+import re
 import rich_click as click
 
 from ...subs import split_audio_with_subtitles
 from ...core.text import natural_sort_key
+
+def extract_youtube_id(filename: str) -> str:
+    """Extract YouTube ID from filename containing [YOUTUBE_ID].
+
+    Args:
+        filename: Filename potentially containing [YOUTUBE_ID]
+
+    Returns:
+        YouTube ID if found, otherwise original filename without extension
+    """
+    # Look for [SOMETHING] pattern
+    match = re.search(r'\[(.*?)\]', filename)
+    if match:
+        return match.group(1)
+    # Fall back to filename without extension
+    return Path(filename).stem
+
+def get_matching_pairs(input_dir: Path, audio_type: str) -> list[tuple[str, str]]:
+    """Get matching audio and VTT file pairs based on YouTube IDs.
+
+    Args:
+        input_dir: Directory containing audio and VTT files
+        audio_type: Audio file extension to look for
+
+    Returns:
+        List of tuples containing matching (audio_file, vtt_file) pairs
+    """
+    # Create dictionaries mapping YouTube IDs to files
+    vtt_files = {extract_youtube_id(f.name): f.name
+                 for f in input_dir.glob("*.vtt")}
+    audio_files = {extract_youtube_id(f.name): f.name
+                  for f in input_dir.glob(f"*.{audio_type}")}
+
+    # Find matching pairs
+    pairs = []
+    for youtube_id in sorted(set(vtt_files.keys()) & set(audio_files.keys())):
+        pairs.append((audio_files[youtube_id], vtt_files[youtube_id]))
+
+    return sorted(pairs, key=lambda x: natural_sort_key(x[0]))
 
 @click.command()
 @click.argument("input_dir", type=click.Path(exists=True))
@@ -49,32 +89,28 @@ def split(input_dir: str,
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    audio_file_filter = f'*.{audio_type}'
-    # Collect all .vtt and audio files in the directory
-    vtt_files = [file.name for file in input_dir.glob("*.vtt")]
-    acc_files = [file.name for file in input_dir.glob(audio_file_filter)]
+    # Get matching pairs using YouTube IDs
+    pairs = get_matching_pairs(input_dir, audio_type)
 
-    acc_files = sorted(acc_files, key=natural_sort_key)
+    if not pairs:
+        click.echo("No matching audio/VTT pairs found!")
+        return
 
-    pairs = []
-    for acc_file in acc_files:
-        for vtt_file in vtt_files:
-            if acc_file.split(".")[0] == vtt_file.split(".")[0]:
-                pairs.append((acc_file, vtt_file))
+    click.echo(f"Found {len(pairs)} matching audio/VTT pairs")
+    click.echo(f"Output directory: {output_dir}")
 
-    click.echo(f"{output_dir}")
-
-    for p in pairs:
-        # split filename with ., drop last element, recompile as string back
-        episode_name = ".".join(p[0].split(".")[:-1])
-        click.echo(f"{p}, {episode_name}")
+    for audio_file, vtt_file in pairs:
+        # Get episode name from audio file (without extension)
+        episode_name = Path(audio_file).stem
+        click.echo(f"\nProcessing pair: {audio_file} <-> {vtt_file}")
+        click.echo(f"Episode name: {episode_name}")
 
         episode_dir = output_dir / episode_name
         episode_dir.mkdir(exist_ok=True)
-        click.echo(episode_dir)
+
         split_audio_with_subtitles(
-            f"{input_dir}/{p[1]}",
-            f"{input_dir}/{p[0]}",
+            str(input_dir / vtt_file),
+            str(input_dir / audio_file),
             episode_dir,
             format=format,
             tolerance=tolerance,

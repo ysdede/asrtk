@@ -217,9 +217,7 @@ def turkish_capitalize(s: str) -> str:
     Returns:
         Capitalized text
     """
-    if not s:
-        return s
-    return turkish_upper(s[0]) + s[1:]
+    return s if not s else turkish_upper(s[0]) + s[1:]
 
 class PunctuationRestorer:
     """Handles Turkish text punctuation restoration using BERT model."""
