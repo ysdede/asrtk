@@ -255,14 +255,21 @@ class PunctuationRestorer:
             print(f"Successfully loaded BERT model on {self._device}")
 
     def restore(self, text):
-        """Restore punctuation in the given text."""
-        predictions = self._model(text)
+        """
+        Restore punctuation in the given text.
+        Only applies predictions with confidence score above 70%.
+        """
+        predictions = [
+            pred for pred in self._model(text)
+            if pred['score'] >= 0.7  # Only keep high confidence predictions
+        ]
         return self._restore_punctuation(text, predictions)
 
     def _restore_punctuation(self, text, model_output):
         """
         Internal method to restore punctuation using model output.
         Handles agglutinative suffixes, apostrophes, quotes, and Turkish punctuation rules.
+        Only applies predictions with confidence score above 70%.
         """
         predictions = sorted(model_output, key=lambda x: x['start'])
         result = list(text)
@@ -272,18 +279,8 @@ class PunctuationRestorer:
         while i < len(predictions):
             current_pred = predictions[i]
 
-            # Skip if the token itself is a punctuation mark
-            if current_pred['word'] == {
-                'PERIOD': '.',
-                'QUESTION_MARK': '?',
-                'COMMA': ','
-            }.get(current_pred['entity']):
-                i += 1
-                continue
-
-            # Skip existing punctuation predictions
-            if (len(current_pred['word']) == 1 and
-                current_pred['word'] in ['.', ',', '?', "'", '"']):
+            # Skip predictions with low confidence
+            if current_pred['score'] < 0.85:
                 i += 1
                 continue
 
@@ -299,15 +296,20 @@ class PunctuationRestorer:
             while last_pos + 1 < len(predictions):
                 next_pred = predictions[last_pos + 1]
                 if (next_pred['word'].startswith('##') or
-                    next_pred['word'] in ["'", '"'] or
                     next_pred['start'] == predictions[last_pos]['end']):
                     last_pos += 1
                 else:
                     break
 
-            # Add punctuation after complete word
+            # Only process punctuation if this is the last token of a word
             if current_pred['entity'] in ['PERIOD', 'QUESTION_MARK', 'COMMA']:
+                # Get the position after the complete word
                 insert_pos = predictions[last_pos]['end'] + offset
+
+                # Skip if current token is a suffix - let the main token handle punctuation
+                if current_pred['word'].startswith('##'):
+                    i = last_pos + 1
+                    continue
 
                 # Don't insert punctuation in the middle of a word with apostrophe/quote
                 if (insert_pos < len(result) and
@@ -323,27 +325,38 @@ class PunctuationRestorer:
                     i = last_pos + 1
                     continue
 
-                # Check for existing punctuation in surrounding positions
-                has_punct_before = (insert_pos > 0 and
-                                  result[insert_pos - 1] in ['.', ',', '?'])
-                has_punct_after = (insert_pos < len(result) and
-                                 result[insert_pos] in ['.', ',', '?'])
-                has_quote_after = (insert_pos < len(result) and
-                                 result[insert_pos] == '"')
+                # Check if there's already a punctuation mark
+                if (insert_pos < len(result) and
+                    result[insert_pos] in ['.', ',', '?']):
+                    # Replace existing punctuation
+                    punct = {
+                        'PERIOD': '.',
+                        'QUESTION_MARK': '?',
+                        'COMMA': ','
+                    }[current_pred['entity']]
+                    result[insert_pos] = punct
+                else:
+                    # Check for existing punctuation in surrounding positions
+                    has_punct_before = (insert_pos > 0 and
+                                      result[insert_pos - 1] in ['.', ',', '?'])
+                    has_punct_after = (insert_pos < len(result) and
+                                     result[insert_pos] in ['.', ',', '?'])
+                    has_quote_after = (insert_pos < len(result) and
+                                     result[insert_pos] == '"')
 
-                # Skip if there's already punctuation nearby or quote after
-                if has_punct_before or has_punct_after or has_quote_after:
-                    i = last_pos + 1
-                    continue
+                    # Skip if there's already punctuation nearby or quote after
+                    if has_punct_before or has_punct_after or has_quote_after:
+                        i = last_pos + 1
+                        continue
 
-                # Add punctuation if no existing punctuation nearby
-                punct = {
-                    'PERIOD': '.',
-                    'QUESTION_MARK': '?',
-                    'COMMA': ','
-                }[current_pred['entity']]
-                result.insert(insert_pos, punct)
-                offset += 1
+                    # Insert new punctuation if no existing punctuation nearby
+                    punct = {
+                        'PERIOD': '.',
+                        'QUESTION_MARK': '?',
+                        'COMMA': ','
+                    }[current_pred['entity']]
+                    result.insert(insert_pos, punct)
+                    offset += 1
 
             i = last_pos + 1
 
