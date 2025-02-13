@@ -1,7 +1,7 @@
 ydl_opts = {
     # ℹ️ See help(yt_dlp.postprocessor) for a list of available Postprocessors and their arguments
     'format': 'm4a/bestaudio/best',
-    'postprocessors': [{
+    'postprocessors': [{  # Extract audio using ffmpeg
         'key': 'FFmpegExtractAudio',
         'preferredcodec': 'aac',
     }],

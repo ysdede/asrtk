@@ -167,3 +167,28 @@ temp/
 .env
 .env.*
 !.env.example
+common_voice_tr/
+notebooks/finetune_multi_streaming.py
+scripts/download_yeni_split0.py
+
+# Secrets and tokens
+.env
+*.env
+.env.*
+.secrets
+*.pem
+*token*
+*secret*
+*credential*
+.wandb
+wandb/
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/

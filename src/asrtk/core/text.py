@@ -61,12 +61,6 @@ def sanitize_for_merge(text: str) -> str:
     if text.startswith('...'):
         text = text[3:]
 
-    # if text.endswith('..'):
-    #     text = f"{text[:-2]} "
-
-    # if text.startswith('..'):
-    #     text = text[2:]
-
     return fix_spaces(text).strip()
 
 def get_unique_words_with_frequencies(text: str) -> Tuple[List[str], Dict[str, int]]:
@@ -223,16 +217,13 @@ def turkish_capitalize(s: str) -> str:
     Returns:
         Capitalized text
     """
-    if not s:
-        return s
-    return turkish_upper(s[0]) + s[1:]
+    return s if not s else turkish_upper(s[0]) + s[1:]
 
 class PunctuationRestorer:
     """Handles Turkish text punctuation restoration using BERT model."""
 
     _instance = None
     _model = None
-    _device = None
 
     def __new__(cls):
         """Singleton pattern to ensure only one model instance."""
@@ -243,16 +234,10 @@ class PunctuationRestorer:
     def __init__(self):
         """Initialize the model only once."""
         if PunctuationRestorer._model is None:
-            # Determine device
-            self._device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            print(f"Initializing BERT model on device: {self._device}")
-
             PunctuationRestorer._model = pipeline(
                 task="token-classification",
-                model="uygarkurt/bert-restore-punctuation-turkish",
-                device=0 if torch.cuda.is_available() else -1  # 0 for first GPU, -1 for CPU
+                model="uygarkurt/bert-restore-punctuation-turkish"
             )
-            print(f"Successfully loaded BERT model on {self._device}")
 
     def restore(self, text):
         """
@@ -280,7 +265,7 @@ class PunctuationRestorer:
             current_pred = predictions[i]
 
             # Skip predictions with low confidence
-            if current_pred['score'] < 0.85:
+            if current_pred['score'] < 0.72:
                 i += 1
                 continue
 

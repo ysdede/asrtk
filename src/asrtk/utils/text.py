@@ -2,6 +2,35 @@
 import re
 from bs4 import BeautifulSoup
 
+# regex used in get_unique_words
+punctuation_re = re.compile(r'[()?:;]')
+end_punctuation_re = re.compile(r'[\.,]$')
+double_space_re = re.compile(r'  +')
+#
+
+# Türkçe karakterler için özel büyütme ve küçültme eşlemeleri
+turkish_upper_chars = {"ı": "I", "i": "İ", "ş": "Ş", "ğ": "Ğ", "ü": "Ü", "ö": "Ö", "ç": "Ç"}
+turkish_lower_chars = {v: k for k, v in turkish_upper_chars.items()}
+
+
+def turkish_upper(s):
+    return "".join(turkish_upper_chars.get(c, c.upper()) for c in s)
+
+
+def turkish_lower(s):
+    return "".join(turkish_lower_chars.get(c, c.lower()) for c in s)
+
+
+def is_turkish_upper(s):
+    return s == turkish_upper(s)
+
+
+def turkish_capitalize(s):
+    if not s:
+        return s
+    return turkish_upper(s[0]) + s[1:]
+
+
 def natural_sort_key(s: str) -> list:
     """Create a key for natural sorting of strings with numbers.
 
@@ -142,3 +171,42 @@ def split_into_sentences_turkish(text: str) -> list[str]:
     sentence_endings = r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|!)\s"
     sentences = re.split(sentence_endings, text)
     return [sentence.strip() for sentence in sentences if sentence]
+
+def normalize_text(text: str) -> str:
+    """
+    Apply normalization to text described in Moonshine: Speech Recognition for Live Transcription and Voice Commands
+    https://arxiv.org/html/2410.15608v2
+
+    Handle Turkish specific characters, use helper functions defined earlier.
+
+    Preprocessing noisily-labeled speech:
+    Many speech sources available on the web have subtitles or captions available, which can serve as labels.
+    However, captions tend be noisy—they may be manually-generated and thus contain text that is orthogonal
+    to the audio content, or they may contain the names of speakers or verbal descriptions of non-speech content.
+    In cases where a manually-generated but possibly-unreliable caption is available, we use a heuristic process to
+    filter out low-quality instances. First, we lowercase and normalize the caption text, removing or replacing, e.g.,
+    ambiguous unicode characters, emoji, and punctuation. We then use Whisper large v3 to generate a pseudo-label
+    of the audio content, applying the same text normalization to this pseudo-label as we do the caption.
+    Finally, we compute a normalized Levenshtein distance (between [0.0, 1.0],
+    where 0.0 is identical and 1.0 is orthogonal) between the normalized caption and the pseudo-label, filtering out labels
+    with a distance above a threshold.
+    This allows us to treat the human-generated labels in captions as ground truth without introducing excessive noise.
+    After filtering out noisy labels, we prepare the remaining text by applying standardized punctuation and capitalization.
+
+    Preprocessing unlabeled speech:
+    The majority of speech available on the web is unlabeled. In these cases, we leverage the Whisper large v3 model
+    to generate training labels for our lighter-weight Moonshine model.
+    The risk inherent in training one model on another model’s outputs is that the new model learns the old model’s errors.
+    From inspection, we noted that the majority of hallucinated outputs from Whisper large v3 occurred below a predictable
+    value of the average log probability of the output. We thus mitigate the risk of introducing hallucination and
+    other noise in the training set by filtering out instances with an average log probability below this threshold.
+    During this process, we benefited from speed-ups provided by batched inference in the WhisperX implementation (Bain et al., 2023).
+    """
+
+    text = turkish_lower(text)
+    text = re.sub(r'[^a-zçğıöşü]', ' ', text).replace("  ", " ")
+    return text
+
+
+if __name__ == "__main__":
+    print(normalize_text("Çok iyi ve nazik biriydi. Prusya’daki ilk karşılaşmamızda onu konuşturmayı başarmıştım. Bana o yaz North Cape’de bulunduğunu ve Nijni Novgorod panayırına gitmeyi çok istediğini anlatmıştı.,;)([-*])"))
