@@ -21,7 +21,7 @@ echo.
 for /d %%d in ("%INPUT_DIR%*") do (
     echo.
     echo Processing directory: %%~nxd
-    set "CMD=asrtk split "%%d" "%OUTPUT_DIR%%%~nxd" --tolerance 500 -fm  --keep-effects --restore-punctuation"
+    set "CMD=asrtk split "%%d" "%OUTPUT_DIR%%%~nxd" --tolerance 500 -fm"
     echo Command: !CMD!
     !CMD!
 )
