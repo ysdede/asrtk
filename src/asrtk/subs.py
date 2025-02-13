@@ -44,11 +44,12 @@ def _load_silero_model():
     global _silero_model, _silero_utils
 
     if _silero_model is None:
+        # Determine device
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        console.print(f"[blue]Using device: {device}")
+
         max_retries = 3
         retry_delay = 5  # seconds
-
-        # Try to load from cache first
-        cache_dir = torch.hub.get_dir()
 
         for attempt in range(max_retries):
             try:
@@ -61,8 +62,11 @@ def _load_silero_model():
                     verbose=False,
                     skip_validation=True  # Skip GitHub validation
                 )
+                # Move model to appropriate device
+                _silero_model = _silero_model.to(device)
+                console.print(f"[green]Successfully loaded Silero VAD model on {device}")
                 break
-            except (urllib.error.URLError, ConnectionError, http.client.RemoteDisconnected) as e:
+            except (urllib.error.URLError, ConnectionError) as e:
                 if attempt < max_retries - 1:
                     print(f"Connection error loading Silero model (attempt {attempt + 1}/{max_retries}): {e}")
                     print(f"Retrying in {retry_delay} seconds...")
@@ -276,8 +280,11 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
     if not os.path.exists(silent_chunk_folder):
         os.makedirs(silent_chunk_folder)
 
-    # Load Silero model
+    # Load Silero model and get device
     silero_model, silero_utils = _load_silero_model()
+    device = next(silero_model.parameters()).device  # Get device from model
+    console.print(f"[blue]Processing audio on device: {device}")
+
     (get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = silero_utils
 
     # Get punctuation restorer if needed
@@ -292,7 +299,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
         sample_rate = audio.frame_rate
 
     if forced_alignment:
-        with console.status("[bold blue]Preparing audio for forced alignment...", spinner="dots") as status:
+        with console.status("[bold blue]Preparing audio for forced alignment...") as status:
             # Export the AudioSegment object to a byte stream
             audio_byte_stream = io.BytesIO()
             status.update("[bold blue]Converting audio format...")
@@ -303,6 +310,9 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             status.update("[bold blue]Loading audio data...")
             audio_pt, sample_rate = torchaudio.load(audio_byte_stream)
 
+            # Move to appropriate device immediately after loading
+            audio_pt = audio_pt.to(device)
+
             # Check if stereo and downmix if needed
             if audio_pt.shape[0] == 2:
                 console.print("[yellow]Stereo audio detected, downmixing to mono...")
@@ -311,7 +321,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             # Resample if needed
             if sample_rate != 16000:
                 console.print(f"[yellow]Resampling from {sample_rate} Hz to 16000 Hz...")
-                resampler = Resample(orig_freq=sample_rate, new_freq=16000, lowpass_filter_width=256, rolloff=0.99)
+                resampler = Resample(orig_freq=sample_rate, new_freq=16000).to(device)  # Move resampler to same device
                 audio_pt = resampler(audio_pt)
                 sample_rate = 16000
 
@@ -418,7 +428,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
 
         # Dok
         if full_text.endswith("..") and not full_text.endswith("..."):
-            full_text = full_text[:-2] + "."
+            full_text = f"{full_text[:-2]}"
 
         start_time = current_caption.start_in_seconds * 1000  # Start time in ms
         end_time = current_caption.end_in_seconds * 1000  # End time in ms
@@ -443,7 +453,12 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 break  # Stop merging and use what we have so far
 
             next_text = sanitize(next_caption.text)
-            potential_merge = sanitize_for_merge(full_text) + " " + sanitize_for_merge(next_text)
+
+            if next_text.startswith("..") and not next_text.startswith("..."):
+                # remove the leading ".."
+                next_text = f"{next_text[2:]} "
+
+            potential_merge = f"{sanitize_for_merge(full_text)} {sanitize_for_merge(next_text)}"
             potential_end_time = captions[j].end_in_seconds * 1000
 
             # Check the duration before actually merging
@@ -466,6 +481,7 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
 
             full_text = full_text.replace("... ...", " ")
             full_text = full_text.replace(".. ..", " ")
+
 
             end_time = potential_end_time
             j += 1
@@ -496,11 +512,12 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             start_sample_with_tolerance = max(0, start_sample - tolerance_in_samples)
             end_sample_with_tolerance = min(audio_pt.size(1), end_sample + tolerance_in_samples)
 
-            # Extract the audio chunk with the applied tolerance
+            # Extract the audio chunk with the applied tolerance (stays on same device)
             waveform = audio_pt[:, start_sample_with_tolerance:end_sample_with_tolerance]
 
             # Add context manager for VAD
             with torch.no_grad():
+                # VAD processing happens on same device as model
                 speech_timestamps = get_speech_timestamps(waveform, silero_model, threshold=0.6, sampling_rate=sample_rate)
             silero_model.reset_states()
 
@@ -519,24 +536,24 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 print(f"No speech detected. Skipping...")
                 # Add garbage collection
                 del waveform
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 gc.collect()
                 i += 1
                 continue
 
-            # Trim the waveform to the VAD speech timestamps, we may disable this.
-            pprint(f"VAD Speech timestamps: {speech_timestamps}")
+            # Trim the waveform to the VAD speech timestamps (stays on device)
             global_start = speech_timestamps[0]['start']
             global_end = speech_timestamps[-1]['end']
-            backup_waveform = waveform
             waveform = waveform[:, global_start:global_end]
-            # waveform = collect_chunks(speech_timestamps, waveform)
 
             full_text_4_alignment = full_text.replace("-", " ")
             print(f"Aligning: {full_text_4_alignment}")
 
             try:
                 with torch.no_grad():
+                    # Ensure waveform is on correct device before alignment
+                    waveform = waveform.to(device)
                     waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
             except Exception as e:
                 print(f"Error aligning VAD trimmed waveform. Restoring backup...")
@@ -551,19 +568,11 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
                 # )
                 # Add garbage collection
                 del waveform
-                del backup_waveform
-                torch.cuda.empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 gc.collect()
                 i += 1
                 continue
-
-            # try:
-            #     waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
-            # except Exception as e:
-            #     print(f"Error aligning: {e}")
-            #     torchaudio.save(f"{output_folder}/chunk_{i}_failed_alignment.{format}", waveform, sample_rate, format=format)
-            #     i += 1
-            #     continue
 
             start_sec, end_sec = aligner.get_sentence_boundaries(waveform, token_spans, num_frames, sample_rate)
 
@@ -582,14 +591,14 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             chunk_name = f"{output_folder}/chunk_{i}.{format}"
 
             # Convert to 16-bit PCM before saving
-            chunk_16bit = convert_to_int16(chunk)
+            chunk_16bit = convert_to_int16(chunk.cpu())  # Move to CPU just before saving
             torchaudio.save(
                 chunk_name,
                 chunk_16bit,
                 sample_rate,
                 format=format,
-                encoding='PCM_S',  # Specify signed PCM encoding
-                bits_per_sample=16  # Explicitly set 16 bits
+                encoding='PCM_S',
+                bits_per_sample=16
             )
 
             # After saving the chunk, add garbage collection
@@ -603,10 +612,9 @@ Codec: {props['codec']}, Sample format: {props['sample_fmt']}""")
             chunk_name = f"{output_folder}/chunk_{i}.{format}"
             chunk = audio[start_with_tolerance:end_with_tolerance]
             chunk.export(chunk_name, format=format)
-            # Add garbage collection for non-forced alignment path
-            del chunk
-            gc.collect()
-
+        gc.collect()
+        # After saving the chunk, add garbage collection
+        del chunk
         print(f"Exported Audio: {chunk_name}")
 
         # Save the corresponding VTT
