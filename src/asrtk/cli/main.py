@@ -1,6 +1,11 @@
 """Main CLI entry point for asrtk."""
+import importlib
+from typing import Callable, Dict, Tuple
 import rich_click as click
-from .. import __version__
+
+# Version is the only thing we need from the package
+# from .. import __version__
+version = "0.1.3"
 
 context_settings = {"help_option_names": ["-h", "--help"]}
 help_config = click.RichHelpConfiguration(
@@ -9,58 +14,79 @@ help_config = click.RichHelpConfiguration(
     use_rich_markup=True,
 )
 
+# Dictionary mapping command names to their import paths and functions
+COMMAND_REGISTRY: Dict[str, Tuple[str, str, str]] = {
+    # Format: 'command-name': (module_path, function_name, help_text)
+    "download-playlist": (".commands.download", "download_playlist", "Download videos from a YouTube playlist with subtitles"),
+    "download-channel": (".commands.download", "download_channel", "Download videos from a YouTube channel with subtitles"),
+    "create-wordset": (".commands.wordset", "create_wordset", "Create a wordset from subtitle files"),
+    "apply-patch": (".commands.patch", "apply_patch", "Apply a patch file to subtitles"),
+    "fix": (".commands.fix", "fix", "Fix common issues in subtitle files"),
+    "find-words": (".commands.find", "find_words", "Find specific words in subtitle files"),
+    "find-arabic": (".commands.find", "find_arabic", "Find Arabic text in subtitle files"),
+    "find-patterns": (".commands.find", "find_patterns", "Find regex patterns in subtitle files"),
+    "find-brackets": (".commands.find", "find_brackets", "Find bracketed text in subtitle files"),
+    "split": (".commands.split", "split", "Split subtitle files"),
+    "merge-lines": (".commands.merge", "merge_lines", "Merge consecutive subtitle lines"),
+    "remove-lines": (".commands.remove", "remove_lines", "Remove specific lines from subtitle files"),
+    "count-numbers": (".commands.numbers", "count_numbers", "Count numbers in subtitle files"),
+    "find-abbreviations": (".commands.abbreviations", "find_abbreviations", "Find abbreviations in subtitle files"),
+    "fix-timestamps": (".commands.fix_timestamps", "fix_timestamps", "Fix subtitle timestamps"),
+    "convert": (".commands.convert", "convert", "Convert subtitle files between formats"),
+    "probe-audio": (".commands.convert", "probe_audio", "Probe audio files for metadata"),
+    "probe-mp3": (".commands.convert", "probe_mp3", "Probe MP3 files for metadata"),
+    "chunk": (".commands.chunk", "chunk", "Split audio and subtitle files into chunks"),
+    "duplicates": (".commands.duplicates", "duplicates", "Find duplicate subtitle lines"),
+    "trim": (".commands.trim", "trim", "Trim audio and subtitle files"),
+    "create-charset": (".commands.charset", "create_charset", "Create a character set from subtitle files"),
+}
+
+class LazyCommand(click.Command):
+    """A Click Command that loads its implementation only when invoked."""
+
+    def __init__(
+        self,
+        name: str,
+        module_path: str,
+        function_name: str,
+        help_text: str,
+        **kwargs
+    ):
+        super().__init__(name=name, help=help_text, **kwargs)
+        self.module_path = module_path
+        self.function_name = function_name
+        self._loaded_command: Callable | None = None
+
+    def invoke(self, ctx: click.Context) -> None:
+        """Load and invoke the actual command implementation."""
+        if self._loaded_command is None:
+            try:
+                module = importlib.import_module(self.module_path, package="asrtk.cli")
+                self._loaded_command = getattr(module, self.function_name)
+                # Copy the signature and help from the loaded command
+                self.params = self._loaded_command.params
+                self.callback = self._loaded_command
+            except ImportError as e:
+                raise click.ClickException(
+                    f"Failed to load command {self.name}: {str(e)}"
+                )
+        return super().invoke(ctx)
+
 @click.group(context_settings=context_settings)
 @click.rich_config(help_config=help_config)
-@click.version_option(__version__, "-v", "--version")
+@click.version_option(version, "-v", "--version")
 def cli() -> None:
     """An open-source Python toolkit designed to streamline the development and enhancement of ASR systems."""
 
-def register_commands():
-    """Register CLI commands lazily to avoid loading unnecessary dependencies."""
-    # Import commands only when needed
-    from .commands.wordset import create_wordset
-    from .commands.patch import apply_patch
-    from .commands.download import download_playlist, download_channel
-    from .commands.fix import fix
-    from .commands.find import find_words, find_arabic, find_patterns, find_brackets
-    from .commands.split import split
-    from .commands.merge import merge_lines
-    from .commands.remove import remove_lines
-    from .commands.numbers import count_numbers
-    from .commands.abbreviations import find_abbreviations
-    from .commands.fix_timestamps import fix_timestamps
-    from .commands.convert import convert, probe_audio, probe_mp3
-    from .commands.chunk import chunk
-    from .commands.duplicates import duplicates
-    from .commands.trim import trim
-    from .commands.charset import create_charset
+# Register lazy-loaded commands
+for cmd_name, (module_path, func_name, help_text) in COMMAND_REGISTRY.items():
+    cli.add_command(LazyCommand(
+        name=cmd_name,
+        module_path=module_path,
+        function_name=func_name,
+        help_text=help_text
+    ))
 
-    # Register commands
-    cli.add_command(create_wordset)
-    cli.add_command(apply_patch)
-    cli.add_command(download_playlist)
-    cli.add_command(download_channel)
-    cli.add_command(fix)
-    cli.add_command(find_words)
-    cli.add_command(find_arabic)
-    cli.add_command(find_patterns)
-    cli.add_command(find_brackets)
-    cli.add_command(split)
-    cli.add_command(merge_lines)
-    cli.add_command(remove_lines)
-    cli.add_command(count_numbers)
-    cli.add_command(find_abbreviations)
-    cli.add_command(fix_timestamps)
-    cli.add_command(convert)
-    cli.add_command(probe_audio)
-    cli.add_command(probe_mp3)
-    cli.add_command(chunk)
-    cli.add_command(duplicates)
-    cli.add_command(trim)
-    cli.add_command(create_charset)
-
-# Register commands when module is imported
-register_commands()
-
-if __name__ == "__main__":
+def main():
+    """Entry point for the CLI."""
     cli()

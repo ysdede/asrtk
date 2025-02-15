@@ -1,4 +1,5 @@
 # location: asrtk/align/aligner.py
+print(__name__)
 import torch
 import torchaudio
 from torchaudio.transforms import Resample

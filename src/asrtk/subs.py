@@ -10,10 +10,10 @@ import json
 import tempfile
 from typing import List, Tuple, Optional
 from pathlib import Path
+import torch
 
 # Third-party imports
-import torch
-import torchaudio
+print(__name__)
 from torchaudio.transforms import Resample
 import webvtt
 from pydub import AudioSegment
@@ -41,6 +41,7 @@ console = Console()
 
 def _load_silero_model():
     """Load Silero VAD model with caching and retries."""
+    import torchaudio
     global _silero_model, _silero_utils
 
     if _silero_model is None:
@@ -314,6 +315,7 @@ def split_audio_with_subtitles(
 
                 # Load audio data
                 status.update("[bold blue]Loading audio data...")
+                import torchaudio
                 audio_pt, sample_rate = torchaudio.load(audio_byte_stream)
 
                 # Check if stereo and downmix if needed

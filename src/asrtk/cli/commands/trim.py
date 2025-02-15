@@ -2,6 +2,7 @@
 from pathlib import Path
 import rich_click as click
 from rich.console import Console
+print(__name__)
 import torch
 import torchaudio
 from concurrent.futures import ThreadPoolExecutor, as_completed

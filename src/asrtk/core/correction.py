@@ -1,13 +1,5 @@
 """Text correction utilities using transformer models."""
 from typing import Optional, Dict, Any
-import torch
-from transformers import (
-    pipeline,
-    AutoTokenizer,
-    BertForTokenClassification,
-    PreTrainedModel,
-    PreTrainedTokenizer
-)
 
 class TextCorrector:
     """Handles text correction using transformer models for Turkish text."""
@@ -25,6 +17,15 @@ class TextCorrector:
             device: Device to run models on ("cuda" or "cpu"). If None, auto-detect.
             force_cpu: Force BERT models to run on CPU even if CUDA is available
         """
+        from transformers import (
+            pipeline,
+            AutoTokenizer,
+            BertForTokenClassification,
+            PreTrainedModel,
+            PreTrainedTokenizer
+        )
+        print(__name__)
+        import torch
         # Auto-detect device if not specified
         if device is None:
             self.device = "cpu" if force_cpu else ("cuda" if torch.cuda.is_available() else "cpu")

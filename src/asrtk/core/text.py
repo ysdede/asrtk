@@ -3,8 +3,6 @@ from typing import Tuple, Dict, List
 from collections import Counter
 import re
 from transformers import pipeline
-import os
-import torch
 
 # Turkish character mappings
 turkish_upper_chars = {
