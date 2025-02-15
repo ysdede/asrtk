@@ -3,9 +3,7 @@ from pathlib import Path
 import rich_click as click
 from rich.console import Console
 print(__name__)
-import torch
-import torchaudio
-from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import tempfile
 import time
 import gc
@@ -29,6 +27,11 @@ def process_file(input_file: Path, output_dir: Path,
                 debug: bool = False) -> Tuple[bool, Optional[str]]:
     """Process a single audio file - detect and trim silence."""
     try:
+        print(f"[{__name__}] Importing torch in process_file function")
+        import torch
+        print(f"[{__name__}] Importing torchaudio in process_file function")
+        import torchaudio
+
         # Check if output file already exists
         output_file = output_dir / input_file.name
         if output_file.exists():

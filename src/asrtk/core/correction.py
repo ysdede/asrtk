@@ -17,6 +17,7 @@ class TextCorrector:
             device: Device to run models on ("cuda" or "cpu"). If None, auto-detect.
             force_cpu: Force BERT models to run on CPU even if CUDA is available
         """
+        print(f"[{__name__}] Importing transformers in TextCorrector.__init__()")
         from transformers import (
             pipeline,
             AutoTokenizer,
@@ -24,7 +25,7 @@ class TextCorrector:
             PreTrainedModel,
             PreTrainedTokenizer
         )
-        print(__name__)
+        print(f"[{__name__}] Importing torch in TextCorrector.__init__()")
         import torch
         # Auto-detect device if not specified
         if device is None:
