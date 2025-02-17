@@ -6,6 +6,7 @@ COMMANDS = {
     'apply_patch': '.patch',
     'download_playlist': '.download',
     'download_channel': '.download',
+    'download_channel_wosub': '.download',
     'fix': '.fix',
     'find_words': '.find',
     'find_arabic': '.find',
