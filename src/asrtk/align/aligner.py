@@ -1,6 +1,10 @@
 # location: asrtk/align/aligner.py
+print(__name__)
+print(f"[{__name__}] Importing torch in aligner.py module")
 import torch
+print(f"[{__name__}] Importing torchaudio in aligner.py module")
 import torchaudio
+print(f"[{__name__}] Importing Resample from torchaudio.transforms in aligner.py module")
 from torchaudio.transforms import Resample
 from typing import List
 import numpy as np
@@ -17,8 +21,9 @@ device = "cuda"
 print(f'Device forced to {device} for MMS_FA model')
 # torch.set_num_threads(10)
 
+print(f"[{__name__}] Importing MMS_FA from torchaudio.pipelines in aligner.py module")
 from torchaudio.pipelines import MMS_FA as bundle
-from ..core.text import romanize_turkish
+from asrtk.core.text import romanize_turkish
 from asrtk.normalizer import Normalizer
 normalizer = Normalizer()
 

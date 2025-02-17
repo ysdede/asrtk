@@ -4,9 +4,9 @@ import re
 import rich_click as click
 from typing import Optional
 
-from ...subs import split_audio_with_subtitles
-from ...core.text import natural_sort_key
-from ...core.correction import TextCorrector
+from asrtk.subs import split_audio_with_subtitles
+from asrtk.core.text import natural_sort_key
+from asrtk.core.correction import TextCorrector
 
 def extract_youtube_id(filename: str) -> str:
     """Extract YouTube ID from filename containing [YOUTUBE_ID].

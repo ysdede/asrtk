@@ -8,7 +8,7 @@ from asrtk.variables import abbreviations_dict
 from asrtk.variables import unit_translations
 from asrtk.variables import punctuation_dict
 from asrtk.ordinals import normalize_ordinals
-from .core.text import (
+from asrtk.core.text import (
     turkish_capitalize,
     turkish_upper,
     turkish_lower,
@@ -126,7 +126,7 @@ class Normalizer:
                     # thousands seperator underscore.
                     token = token.replace(",", "_")
                 # else:
-                #     raise ValueError(decimal_seperator, 'is not a valid decimal seperator value. Use either "." or ","')
+                #     raise ValueError(decimal_seperator, 'is not a valid decimal seperator value. Use either "." or ",")
 
             # Try to convert token to number
             try:

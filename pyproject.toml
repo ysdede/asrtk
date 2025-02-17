@@ -54,7 +54,7 @@ Changelog = "https://asrtk.readthedocs.io/en/stable/changelog.html"
 "Issue Tracker" = "https://github.com/ysdede/asrtk/issues"
 
 [project.scripts]
-asrtk = "asrtk.cli:cli"
+asrtk = "asrtk.cli.main:main"
 
 [tool.ruff]
 lint.select = ["ALL"]
@@ -98,7 +98,6 @@ target-version = "py38" # the minimum Python version supported, used by pyupgrad
     "SIM300",  # yoda-conditions (flake8-simplify)
     "PLR2004", # magic-value-comparison (Pylint)
 ]
-
 
 [tool.ruff.lint.isort]
 known-first-party = ["asrtk", "tests"]

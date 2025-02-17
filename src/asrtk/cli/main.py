@@ -1,7 +1,12 @@
 """Main CLI entry point for asrtk."""
 import rich_click as click
-from .. import __version__
+from functools import partial, update_wrapper
+from importlib import import_module
 
+# Version
+version = "0.1.3"
+
+# Click configuration
 context_settings = {"help_option_names": ["-h", "--help"]}
 help_config = click.RichHelpConfiguration(
     width=88,
@@ -9,58 +14,51 @@ help_config = click.RichHelpConfiguration(
     use_rich_markup=True,
 )
 
+def load_command(module_path: str, command_name: str):
+    """Load a command from a module."""
+    print(f"[asrtk.cli.main] Importing {command_name} from {module_path}")
+    module = import_module(module_path)
+    return getattr(module, command_name)
+
 @click.group(context_settings=context_settings)
 @click.rich_config(help_config=help_config)
-@click.version_option(__version__, "-v", "--version")
-def cli() -> None:
+@click.version_option(version=version)
+def cli():
     """An open-source Python toolkit designed to streamline the development and enhancement of ASR systems."""
+    pass
 
-def register_commands():
-    """Register CLI commands lazily to avoid loading unnecessary dependencies."""
-    # Import commands only when needed
-    from .commands.wordset import create_wordset
-    from .commands.patch import apply_patch
-    from .commands.download import download_playlist, download_channel
-    from .commands.fix import fix
-    from .commands.find import find_words, find_arabic, find_patterns, find_brackets
-    from .commands.split import split
-    from .commands.merge import merge_lines
-    from .commands.remove import remove_lines
-    from .commands.numbers import count_numbers
-    from .commands.abbreviations import find_abbreviations
-    from .commands.fix_timestamps import fix_timestamps
-    from .commands.convert import convert, probe_audio, probe_mp3
-    from .commands.chunk import chunk
-    from .commands.duplicates import duplicates
-    from .commands.trim import trim
-    from .commands.charset import create_charset
+# Command definitions with their module paths
+commands = [
+    ("download-playlist", "asrtk.cli.commands.download", "download_playlist"),
+    ("download-channel", "asrtk.cli.commands.download", "download_channel"),
+    ("download-channel-wosub", "asrtk.cli.commands.download", "download_channel_wosub"),
+    ("create-wordset", "asrtk.cli.commands.wordset", "create_wordset"),
+    ("apply-patch", "asrtk.cli.commands.patch", "apply_patch"),
+    ("fix", "asrtk.cli.commands.fix", "fix"),
+    ("find-words", "asrtk.cli.commands.find", "find_words"),
+    ("find-arabic", "asrtk.cli.commands.find", "find_arabic"),
+    ("find-patterns", "asrtk.cli.commands.find", "find_patterns"),
+    ("find-brackets", "asrtk.cli.commands.find", "find_brackets"),
+    ("split", "asrtk.cli.commands.split", "split"),
+    ("merge-lines", "asrtk.cli.commands.merge", "merge_lines"),
+    ("remove-lines", "asrtk.cli.commands.remove", "remove_lines"),
+    ("analyze-numbers", "asrtk.cli.commands.number_analyzer", "count_numbers"),
+    ("find-abbreviations", "asrtk.cli.commands.abbreviations", "find_abbreviations"),
+    ("fix-timestamps", "asrtk.cli.commands.fix_timestamps", "fix_timestamps"),
+    ("convert", "asrtk.cli.commands.convert", "convert"),
+    ("probe-audio", "asrtk.cli.commands.convert", "probe_audio"),
+    ("probe-mp3", "asrtk.cli.commands.convert", "probe_mp3"),
+    ("chunk", "asrtk.cli.commands.chunk", "chunk"),
+    ("duplicates", "asrtk.cli.commands.duplicates", "duplicates"),
+]
 
-    # Register commands
-    cli.add_command(create_wordset)
-    cli.add_command(apply_patch)
-    cli.add_command(download_playlist)
-    cli.add_command(download_channel)
-    cli.add_command(fix)
-    cli.add_command(find_words)
-    cli.add_command(find_arabic)
-    cli.add_command(find_patterns)
-    cli.add_command(find_brackets)
-    cli.add_command(split)
-    cli.add_command(merge_lines)
-    cli.add_command(remove_lines)
-    cli.add_command(count_numbers)
-    cli.add_command(find_abbreviations)
-    cli.add_command(fix_timestamps)
-    cli.add_command(convert)
-    cli.add_command(probe_audio)
-    cli.add_command(probe_mp3)
-    cli.add_command(chunk)
-    cli.add_command(duplicates)
-    cli.add_command(trim)
-    cli.add_command(create_charset)
+# Register commands
+for cmd_name, module_path, func_name in commands:
+    # Load the command to get its metadata
+    command = load_command(module_path, func_name)
+    # Register the command with Click
+    cli.add_command(command, cmd_name)
 
-# Register commands when module is imported
-register_commands()
-
-if __name__ == "__main__":
+def main():
+    """Entry point for the CLI."""
     cli()

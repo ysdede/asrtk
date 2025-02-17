@@ -11,10 +11,6 @@ import tempfile
 from typing import List, Tuple, Optional
 from pathlib import Path
 
-# Third-party imports
-import torch
-import torchaudio
-from torchaudio.transforms import Resample
 import webvtt
 from pydub import AudioSegment
 from rich.console import Console
@@ -41,6 +37,10 @@ console = Console()
 
 def _load_silero_model():
     """Load Silero VAD model with caching and retries."""
+    print(f"[{__name__}] Importing torch in _load_silero_model()")
+    import torch
+    print(f"[{__name__}] Importing torchaudio in _load_silero_model()")
+    import torchaudio
     global _silero_model, _silero_utils
 
     if _silero_model is None:
@@ -304,6 +304,11 @@ def split_audio_with_subtitles(
 
         if forced_alignment:
             # Only import aligner when forced alignment is enabled
+            print(f"[{__name__}] Importing torch in split_audio_with_subtitles() - forced alignment block")
+            import torch
+            print(f"[{__name__}] Importing torchaudio in split_audio_with_subtitles() - forced alignment block")
+            import torchaudio
+            print(f"[{__name__}] Importing aligner in split_audio_with_subtitles() - forced alignment block")
             from asrtk.align import aligner
             with console.status("[bold blue]Preparing audio for forced alignment...", spinner="dots") as status:
                 # Export the AudioSegment object to a byte stream
@@ -324,6 +329,7 @@ def split_audio_with_subtitles(
                 # Resample if needed
                 if sample_rate != 16000:
                     console.print(f"[yellow]Resampling from {sample_rate} Hz to 16000 Hz...")
+                    from torchaudio.transforms import Resample
                     resampler = Resample(orig_freq=sample_rate, new_freq=16000, lowpass_filter_width=256, rolloff=0.99)
                     audio_pt = resampler(audio_pt)
                     sample_rate = 16000
@@ -524,7 +530,7 @@ def split_audio_with_subtitles(
                 if len(speech_timestamps) == 0:
                     # silent_chunk_name = f"{silent_chunk_folder}/chunk_{i}.{format}"
                     # Convert silent chunks to 16-bit too
-                    # waveform_16bit = convert_to_int16(waveform)
+                    # waveform_16bit = (waveform * 32767).to(torch.int16)
                     # torchaudio.save(
                     #     silent_chunk_name,
                     #     waveform_16bit,
@@ -557,7 +563,7 @@ def split_audio_with_subtitles(
                         waveform, token_spans, num_frames, emission, sample_rate, transcript = aligner.do_it(waveform, full_text_4_alignment)
                 except Exception as e:
                     print("Error aligning VAD trimmed waveform. Restoring backup...")
-                    # waveform_16bit = convert_to_int16(waveform)
+                    # waveform_16bit = (waveform * 32767).to(torch.int16)
                     # torchaudio.save(
                     #     f"{output_folder}/chunk_{i}_failed_alignment_vad_trim.{format}",
                     #     waveform_16bit,
@@ -599,7 +605,7 @@ def split_audio_with_subtitles(
                 chunk_name = f"{output_folder}/chunk_{i}.{format}"
 
                 # Convert to 16-bit PCM before saving
-                chunk_16bit = convert_to_int16(chunk)
+                chunk_16bit = (chunk * 32767).to(torch.int16)
                 torchaudio.save(
                     chunk_name,
                     chunk_16bit,
@@ -671,39 +677,12 @@ def split_audio_with_subtitles(
             except Exception as e:
                 console.print(f"[yellow]Warning: Could not remove temp file {processed_file}: {e}")
 
-def convert_to_int16(waveform: torch.Tensor) -> torch.Tensor:
-    """Convert floating point waveform to 16-bit PCM.
-
-    Args:
-        waveform: Input waveform tensor (float32)
-
-    Returns:
-        16-bit PCM waveform tensor
-    """
-    # Ensure the input is float32
-    if waveform.dtype != torch.float32:
-        waveform = waveform.float()
-
-    # Normalize to [-1, 1]
-    max_val = torch.max(torch.abs(waveform))
-    if max_val > 0:
-        waveform = waveform / max_val
-
-    # Scale to 16-bit range and convert
-    waveform = (waveform * 32767).clamp(-32768, 32767).short()
-
-    return waveform
-
 def format_duration(seconds: float) -> str:
     """Format duration in seconds to human readable string.
 
     Returns HH:MM:SS if >= 1 hour, else MM:SS
     """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-
-    if hours > 0:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    if seconds >= 3600:
+        return time.strftime("%H:%M:%S", time.gmtime(seconds))
     else:
-        return f"{minutes:02d}:{secs:02d}"
+        return time.strftime("%M:%S", time.gmtime(seconds))

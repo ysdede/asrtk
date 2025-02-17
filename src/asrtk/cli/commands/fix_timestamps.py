@@ -5,7 +5,7 @@ from rich.console import Console
 import re
 from typing import List, Tuple
 
-from ...core.vtt import is_timestamp_line, split_vtt_into_chunks, combine_vtt_chunks
+from asrtk.core.vtt import is_timestamp_line, split_vtt_into_chunks, combine_vtt_chunks
 
 console = Console()
 

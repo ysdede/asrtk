@@ -2,9 +2,6 @@
 from typing import Tuple, Dict, List
 from collections import Counter
 import re
-from transformers import pipeline
-import os
-import torch
 
 # Turkish character mappings
 turkish_upper_chars = {
@@ -233,6 +230,7 @@ class PunctuationRestorer:
 
     def __init__(self):
         """Initialize the model only once."""
+        from transformers import pipeline
         if PunctuationRestorer._model is None:
             PunctuationRestorer._model = pipeline(
                 task="token-classification",
