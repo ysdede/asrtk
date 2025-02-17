@@ -42,7 +42,7 @@ commands = [
     ("split", "asrtk.cli.commands.split", "split"),
     ("merge-lines", "asrtk.cli.commands.merge", "merge_lines"),
     ("remove-lines", "asrtk.cli.commands.remove", "remove_lines"),
-    ("count-numbers", "asrtk.cli.commands.numbers", "count_numbers"),
+    ("analyze-numbers", "asrtk.cli.commands.number_analyzer", "count_numbers"),
     ("find-abbreviations", "asrtk.cli.commands.abbreviations", "find_abbreviations"),
     ("fix-timestamps", "asrtk.cli.commands.fix_timestamps", "fix_timestamps"),
     ("convert", "asrtk.cli.commands.convert", "convert"),

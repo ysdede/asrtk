@@ -7,7 +7,7 @@ import re
 from collections import Counter
 from typing import List, Tuple, Dict
 
-from ...core.vtt import read_vtt_file, is_timestamp_line, is_header_line
+from asrtk.core.vtt import read_vtt_file, is_timestamp_line, is_header_line
 
 console = Console()
 
@@ -61,7 +61,7 @@ def process_vtt_file(vtt_file: Path, check_mixed: bool, check_multiple: bool) ->
 
     return results
 
-@click.command('count-numbers')
+@click.command('analyze-numbers')
 @click.argument('input_dir', type=click.Path(exists=True))
 @click.option('--output', '-o', type=str, default="number_stats.txt", help="Output text file name")
 @click.option('--min-frequency', '-f', type=int, default=1, help="Minimum frequency to include")
@@ -80,10 +80,10 @@ def count_numbers(input_dir: str, output: str, min_frequency: int, check_mixed: 
 
     Examples:
         # Find incorrect decimal separators
-        asrtk count-numbers ./subtitles
+        asrtk analyze-numbers ./subtitles
 
         # Include all checks
-        asrtk count-numbers ./subtitles --check-mixed --check-multiple
+        asrtk analyze-numbers ./subtitles --check-mixed --check-multiple
     """
     input_path = Path(input_dir)
 
