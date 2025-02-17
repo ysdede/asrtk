@@ -8,7 +8,7 @@ import re
 from collections import defaultdict
 import json
 
-from ...core.text import (
+from asrtk.core.text import (
     find_sample_sentences,
     has_arabic
 )

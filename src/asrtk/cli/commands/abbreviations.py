@@ -7,7 +7,7 @@ import re
 from collections import Counter
 from typing import List, Dict
 
-from ...core.vtt import read_vtt_file
+from asrtk.core.vtt import read_vtt_file
 
 console = Console()
 

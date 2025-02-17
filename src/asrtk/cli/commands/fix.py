@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Dict, Any
 from anthropic import Anthropic
 
-from ...core.vtt import split_vtt_into_chunks, combine_vtt_chunks
-from ...utils.file import backup_file, load_cache, save_cache
+from asrtk.core.vtt import split_vtt_into_chunks, combine_vtt_chunks
+from asrtk.utils.file import backup_file, load_cache, save_cache
 
 def create_prompt(content: str, lang: str = "Turkish") -> str:
     """Create the prompt for Claude.

@@ -23,7 +23,7 @@ print(f'Device forced to {device} for MMS_FA model')
 
 print(f"[{__name__}] Importing MMS_FA from torchaudio.pipelines in aligner.py module")
 from torchaudio.pipelines import MMS_FA as bundle
-from ..core.text import romanize_turkish
+from asrtk.core.text import romanize_turkish
 from asrtk.normalizer import Normalizer
 normalizer = Normalizer()
 

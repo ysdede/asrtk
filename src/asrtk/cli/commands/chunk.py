@@ -9,7 +9,7 @@ import os
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from rich.console import Console
 from rich.panel import Panel
-from ...core.text import format_time
+from asrtk.core.text import format_time
 
 FOUR_HOURS_MS = 4 * 60 * 60 * 1000  # 4 hours in milliseconds
 console = Console()

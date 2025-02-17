@@ -5,11 +5,11 @@ import json
 from typing import Dict, List, Tuple
 from rich.console import Console
 
-from ...utils.console import (
+from asrtk.utils.console import (
     print_file_header,
     print_replacement_example
 )
-from ...utils.file import backup_file
+from asrtk.utils.file import backup_file
 
 console = Console()
 
