@@ -32,6 +32,7 @@ commands = [
     ("download-playlist", "asrtk.cli.commands.download", "download_playlist"),
     ("download-channel", "asrtk.cli.commands.download", "download_channel"),
     ("download-channel-wosub", "asrtk.cli.commands.download", "download_channel_wosub"),
+    ("create-charset", "asrtk.cli.commands.charset", "create_charset"),
     ("create-wordset", "asrtk.cli.commands.wordset", "create_wordset"),
     ("apply-patch", "asrtk.cli.commands.patch", "apply_patch"),
     ("fix", "asrtk.cli.commands.fix", "fix"),
