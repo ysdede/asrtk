@@ -516,7 +516,7 @@ def replace_parentheses_with_spoken_form(text):
 
     return normalized_text
 
-def apply_normalizers(text, normalizers=[fill_dates, turkish_capitalize, replace_multiplication_symbol_in_dimensions, dio_normalizer, tts_normalize, normalize_ordinals, convert_numbers_to_words_wrapper, replace_punctuation_with_spelling]):
+def apply_normalizers(text, normalizers=None):
     """
     Apply a sequence of normalization functions to a given text.
 
@@ -531,6 +531,17 @@ def apply_normalizers(text, normalizers=[fill_dates, turkish_capitalize, replace
     Returns:
         str: The normalized text with double spaces replaced by single spaces.
     """
+    if normalizers is None:
+        normalizers = [
+            fill_dates,
+            turkish_capitalize,
+            replace_multiplication_symbol_in_dimensions,
+            dio_normalizer,
+            tts_normalize,
+            normalize_ordinals,
+            convert_numbers_to_words_wrapper,
+            replace_punctuation_with_spelling,
+        ]
     for normalizer in normalizers:
         text = normalizer(text)
     return text.replace("  ", " ")
