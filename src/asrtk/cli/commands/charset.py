@@ -20,15 +20,19 @@ def read_text_content(file_path):
 
 def get_files_recursive(directory: Path, file_type: str) -> list[Path]:
     """Recursively get all files of specified type from directory."""
-    extension = '.vtt' if file_type == 'vtt' else '.txt'
-    return list(directory.rglob(f'*{extension}'))
+    if file_type == 'vtt':
+        return list(directory.rglob('*.vtt'))
+    else:
+        # Accept common text file extensions
+        extensions = ['.txt', '.csv', '.tsv', '.tab']
+        return [f for ext in extensions for f in directory.rglob(f'*{ext}')]
 
 @click.command('create-charset')
 @click.argument('input_paths', nargs=-1, type=click.Path(exists=True))
 @click.option('--type', '-t', 'file_type',
               type=click.Choice(['vtt', 'text']),
-              default='vtt',
-              help='Input file type (vtt or text)')
+              default='text',
+              help='Input file type (vtt for special processing, text for all other files)')
 @click.option('--min-freq', '-m',
               type=int,
               default=1,
@@ -80,9 +84,12 @@ def create_charset(input_paths, file_type, min_freq):
             try:
                 # Skip files with wrong extension when processing individual files
                 if file_path.is_file():  # Check if it's a file
-                    expected_ext = '.vtt' if file_type == 'vtt' else '.txt'
-                    if file_path.suffix.lower() != expected_ext:
-                        progress.log(f"Skipping {file_path}: wrong file type")
+                    if file_type == 'vtt' and file_path.suffix.lower() != '.vtt':
+                        progress.log(f"Skipping {file_path}: not a vtt file")
+                        progress.advance(process_task)
+                        continue
+                    elif file_type == 'text' and file_path.suffix.lower() not in ['.txt', '.csv', '.tsv', '.tab']:
+                        progress.log(f"Skipping {file_path}: not a supported text file")
                         progress.advance(process_task)
                         continue
 
