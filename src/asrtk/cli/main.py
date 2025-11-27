@@ -51,6 +51,8 @@ commands = [
     ("probe-mp3", "asrtk.cli.commands.convert", "probe_mp3"),
     ("chunk", "asrtk.cli.commands.chunk", "chunk"),
     ("duplicates", "asrtk.cli.commands.duplicates", "duplicates"),
+    ("detect-line-separators", "asrtk.cli.commands.line_endings", "detect_line_separators"),
+    ("init-project", "asrtk.cli.commands.scaffold", "init_project"),
 ]
 
 # Register commands
