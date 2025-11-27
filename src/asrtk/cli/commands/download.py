@@ -91,7 +91,7 @@ ydl_opts = {
     }],
     'writesubtitles': True,
     'writeautomaticsub': False,
-    'subtitleslangs': ['tr'],
+    'subtitleslangs': ['en'],
     'skip_download': False,
     'quiet': True,
     'no_warnings': True,
@@ -199,10 +199,12 @@ def download_playlist(work_dir: str, playlist_url: str | None, playlist_file: st
 @click.argument("work_dir", type=click.Path(exists=True))
 @click.option("-u", "--url", "channel_url", type=str, help="YouTube channel URL")
 @click.option("-f", "--file", "channel_file", type=click.Path(exists=True), help="File containing channel info JSON")
-def download_channel(work_dir: str, channel_url: str | None, channel_file: str | None) -> None:
+@click.option("--all", is_flag=True, help="Do not check subtitles and audio languages")
+def download_channel(work_dir: str, channel_url: str | None, channel_file: str | None, all: bool) -> None:
     """Download videos from a YouTube channel with subtitles.
 
-    Provide either a channel URL using --url or a pre-downloaded channel info file using --file
+    Provide either a channel URL using --url or a pre-downloaded channel info file using --file.
+    Use --all to download all videos regardless of subtitle and audio languages.
     """
     if not channel_file and not channel_url:
         raise click.UsageError("Either --url or --file must be specified.")
@@ -297,7 +299,10 @@ def download_channel(work_dir: str, channel_url: str | None, channel_file: str |
             with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
                 video_info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 
-            has_subs, has_audio = check_video_langs(video_info)
+            if all:
+                has_subs, has_audio = True, True
+            else:
+                has_subs, has_audio = check_video_langs(video_info)
 
             if has_subs and has_audio:
                 click.echo(f"Processing: {entry.get('title', video_id)}, ✔ (TR audio + subs)")

@@ -42,7 +42,7 @@ def save_metadata(dataset, output_dir: Path, split: str):
     with open(metadata_file, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
 
-def download_dataset(output_dir: str, splits: list[str]):
+def download_dataset(dataset_name: str, subset: str, lang: str, output_dir: str, splits: list[str]):
     """Download and organize Common Voice dataset.
 
     Args:
@@ -58,8 +58,9 @@ def download_dataset(output_dir: str, splits: list[str]):
 
         # Load the dataset split with trust_remote_code=True
         dataset = load_dataset(
-            "mozilla-foundation/common_voice_17_0",
-            "tr",
+            dataset_name,
+            lang,
+            subset,
             split=split,
             streaming=False,
             trust_remote_code=True
@@ -98,11 +99,12 @@ def download_dataset(output_dir: str, splits: list[str]):
 
 def main():
     # Configuration
-    OUTPUT_DIR = "common_voice_tr"
+    DATASET_NAME = "mozilla-foundation/common_voice_17_0"
+    OUTPUT_DIR = r"N:\dataset_clean\commonvoice_tr_fixed"
     SPLITS = ['train', 'test', 'validation', 'validated']
 
     try:
-        download_dataset(OUTPUT_DIR, SPLITS)
+        download_dataset(DATASET_NAME, OUTPUT_DIR, SPLITS)
         print("\nDownload completed successfully!")
 
         # Print dataset structure

@@ -6,7 +6,7 @@ ydl_opts = {
         'preferredcodec': 'aac',
     }],
     'writesubtitles': True,
-    'subtitleslangs': ['tr'],
+    'subtitleslangs': ['en'],
     'writeautomaticsub': False,
     'paths': {'home': 'raw_audio'},
     'restrictfilenames': True,
