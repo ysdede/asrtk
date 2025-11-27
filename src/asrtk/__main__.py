@@ -1,6 +1,6 @@
 """Command-line interface entry point."""
 
-from . import cli
+from .cli.main import main
 
 if __name__ == "__main__":
-    cli()
+    main()
